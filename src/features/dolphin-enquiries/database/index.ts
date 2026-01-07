@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { decode } from "he";
 import { XMLParser } from 'fast-xml-parser';
-import { documentsFolder, getSourceTypeFromFileName, initDbConnection, query } from '../../utils';
+import { documentsFolder, getSourceTypeFromFileName, initDbConnection, query } from '../../../utils';
 
 /**
  * Logs the processing status of a travel folder.
