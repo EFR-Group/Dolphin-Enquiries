@@ -11,7 +11,7 @@
     "scripts": {
         "generate-docs": "npx jsdoc dist/**/*.js --destination docs -v",
         "start": "tsc && electron .",
-        "build": "rimraf out && rimraf dist && tsc && electron-builder",
+        "build": "rimraf out && rimraf dist && tsc && electron-builder --publish never",
         "postinstall": "electron-builder install-app-deps",
         "tsc": "tsc",
         "test": "jest"
