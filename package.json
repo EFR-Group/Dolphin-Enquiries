@@ -55,7 +55,8 @@
         "publish": {
             "provider": "github",
             "owner": "EFR-Group",
-            "repo": "Dolphin-Enquiries"
+            "repo": "Dolphin-Enquiries",
+            "releaseType": "release"
         }
     },
     "devDependencies": {
