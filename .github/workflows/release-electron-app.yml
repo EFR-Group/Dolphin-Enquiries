@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - master
-    tags:
-      - 'v*.*.*'
 
 jobs:
   release:
     runs-on: windows-latest
+    
     steps:
       - uses: actions/checkout@v3
 
@@ -19,11 +18,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Build and Publish Electron App
-        run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
       - name: Get version from package.json
         id: get_version
         shell: pwsh
@@ -31,33 +25,57 @@ jobs:
           $version = node -p "require('./package.json').version"
           echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          release_name: Release v${{ steps.get_version.outputs.version }}
-          draft: false
-          prerelease: false
+      - name: Build Electron App
+        run: npm run build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: "./out/Dolphin.Enquiries.Setup.${{ steps.get_version.outputs.version }}.exe"
-          asset_name: "Dolphin.Enquiries.Setup.${{ steps.get_version.outputs.version }}.exe"
-          asset_content_type: application/octet-stream
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create tag (if missing)
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.get_version.outputs.tag }}"
 
-      - name: Upload latest.yml
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: "./out/latest.yml"
-          asset_name: "latest.yml"
-          asset_content_type: text/yaml
+          git fetch --tags
+          $existing = git tag -l $tag
+          if ($existing) {
+            Write-Host "Tag $tag already exists"
+          } else {
+            Write-Host "Creating tag $tag"
+            git tag $tag
+            git push origin $tag
+          }
+
+      - name: Create or update release
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.get_version.outputs.tag }}"
+          $title = "Release $tag"
+          $notes = "Version: ${{ steps.get_version.outputs.version }}`nCommit: $env:GITHUB_SHA"
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag `
+              --title $title `
+              --notes $notes `
+              --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release edit $tag `
+              --title $title `
+              --notes $notes `
+              --repo $env:GITHUB_REPOSITORY
+          }
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.get_version.outputs.tag }}"
+
+          gh release upload $tag `
+            "./out/Dolphin.Enquiries.Setup.${{ steps.get_version.outputs.version }}.exe" `
+            "./out/latest.yml" `
+            --clobber `
+            --repo $env:GITHUB_REPOSITORY
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
