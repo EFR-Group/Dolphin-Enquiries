@@ -11,9 +11,13 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_PAT }}
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v3
         with:
@@ -34,8 +38,6 @@ jobs:
 
       - name: Build Electron App
         run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git to use PAT
         shell: pwsh
