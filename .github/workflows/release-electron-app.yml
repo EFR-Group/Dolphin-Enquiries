@@ -3,8 +3,6 @@ name: Release Electron App
 on:
   push:
     branches: [master]
-    tags:
-      - 'v*.*.*'
 
 permissions:
   contents: write
@@ -15,6 +13,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v3
         with:
@@ -22,36 +22,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Build Electron App
-        run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Get version from package.json
-        id: get_version
-        shell: pwsh
-        run: |
-          $version = node -p "require('./package.json').version"
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-      # ✅ Only do release steps on tag pushes
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        run: |
-          gh release create "${{ github.ref_name }}" `
-            --title "Release ${{ github.ref_name }}" `
-            --generate-notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release assets
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        run: |
-          gh release upload "${{ github.ref_name }}" `
-            "./out/Dolphin.Enquiries.Setup.${{ steps.get_version.outputs.version }}.exe" `
-            "./out/latest.yml" `
-            --clobber
+      - name: Build and Publish Electron App
+        run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
