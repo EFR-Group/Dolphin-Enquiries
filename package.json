@@ -12,6 +12,8 @@
         "generate-docs": "npx jsdoc dist/**/*.js --destination docs -v",
         "start": "tsc && electron .",
         "build": "rimraf out && rimraf dist && tsc && electron-builder",
+        "build:main": "tsc -p tsconfig.json",
+        "dist": "npm run build:main && electron-builder --publish always",
         "postinstall": "electron-builder install-app-deps",
         "tsc": "tsc",
         "test": "jest"
@@ -20,10 +22,13 @@
         "appId": "com.efr.dolphinenquiries",
         "productName": "Dolphin Enquiries",
         "asar": true,
-        "files": [
-            "dist/**/*",
-            "package.json"
-        ],
+        "build": {
+            "files": [
+                "dist/**/*",
+                "node_modules/**/*",
+                "package.json"
+            ]
+        },
         "extraResources": [
             {
                 "from": "src/assets",
@@ -39,6 +44,9 @@
         },
         "win": {
             "target": "nsis",
+            "publish": [
+                "github"
+            ],
             "icon": "src/assets/images/company-icon.ico",
             "artifactName": "Dolphin.Enquiries.Setup.${version}.${ext}",
             "requestedExecutionLevel": "asInvoker"
@@ -53,7 +61,6 @@
         }
     },
     "devDependencies": {
-        "@electron/rebuild": "^4.0.1",
         "@types/auto-launch": "^5.0.5",
         "@types/electron-store": "^1.3.1",
         "@types/he": "^1.2.3",
