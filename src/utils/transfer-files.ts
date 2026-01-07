@@ -169,6 +169,8 @@ export class TransferClient {
             port: this.config.port,
             username: this.config.username,
             password: this.config.password,
+            keepaliveInterval: 10000,
+            readyTimeout: 60000,
         });
         this.log(`Successfully connected to SFTP: ${this.toString()}`);
         return client;
@@ -249,10 +251,33 @@ export class TransferClient {
 
     async get(remoteFile: string, localFile: string): Promise<void> {
         this.log(`Downloading file from ${remoteFile} to ${localFile}`);
+
         const client = this.getClient();
+
         if (this.isSFTPClient(client)) {
-            await (client as SFTPClient).get(remoteFile, localFile);
-        } else if (this.isFTPClient(client)) {
+            const sftp = client as SFTPClient;
+
+            const concurrency = 16;
+            const chunkSize = 1024 * 1024;
+
+            try {
+                await sftp.fastGet(remoteFile, localFile, {
+                    concurrency,
+                    chunkSize,
+                });
+
+                this.log(`fastGet completed (${concurrency}x${chunkSize}) for ${remoteFile}`);
+                return;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                this.log(`fastGet failed, falling back to get(): ${msg}`);
+
+                await sftp.get(remoteFile, localFile);
+                return;
+            }
+        }
+
+        if (this.isFTPClient(client)) {
             await this.ftpClient?.downloadTo(localFile, remoteFile);
         }
     }
