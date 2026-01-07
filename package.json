@@ -4,9 +4,9 @@
     "main": "dist/main.js",
     "description": "A simple Electron app to send email notifications for Dolphin Enquiries.",
     "author": {
-        "name": "Farrell Technology LTD",
-        "email": "office@farrelltech.org",
-        "url": "https://farrelltech.org"
+        "name": "EFR Travel",
+        "email": "it@efrtravel.com",
+        "url": "https://efrtravel.com/"
     },
     "scripts": {
         "generate-docs": "npx jsdoc dist/**/*.js --destination docs -v",
@@ -17,7 +17,7 @@
         "test": "jest"
     },
     "build": {
-        "appId": "org.farrelltech.dolphinenquiries",
+        "appId": "com.efr.dolphinenquiries",
         "productName": "Dolphin Enquiries",
         "asar": true,
         "files": [
@@ -48,7 +48,7 @@
         },
         "publish": {
             "provider": "github",
-            "owner": "FarrellTechnology",
+            "owner": "EFR-Group",
             "repo": "Dolphin-Enquiries"
         }
     },
