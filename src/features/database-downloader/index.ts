@@ -75,7 +75,6 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
       `[SFTP] Starting .bak download | Remote: ${REMOTE_DIR} | Local: ${LOCAL_DIR}`
     );
 
-    // ✅ local write test (catches permissions / Defender Controlled Folder Access)
     try {
       const testFile = path.join(LOCAL_DIR, ".write-test.tmp");
       await fs.writeFile(testFile, "ok");
@@ -84,7 +83,7 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
       const msg = err instanceof Error ? err.message : String(err);
       logToFile(
         "database-downloader",
-        `[SFTP] ❌ Local write test failed in ${LOCAL_DIR}: ${msg}`
+        `[SFTP] Local write test failed in ${LOCAL_DIR}: ${msg}`
       );
       throw err;
     }
@@ -125,7 +124,6 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
         `[SFTP] (${index}/${bakFiles.length}) ${safeName} | size=${formatBytes(remoteSize)}`
       );
 
-      // skip if already downloaded
       try {
         const stat = await fs.stat(localFile);
         if (stat.size === remoteSize && stat.size > 0) {
@@ -148,24 +146,19 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
           )} remote=${formatBytes(remoteSize)} -> re-downloading`
         );
       } catch {
-        // ignore
       }
 
-      // ✅ Download to temp file first
       const tempFile = `${localFile}.downloading`;
 
-      // Clean up any old temp file from previous run
       try {
         await fs.unlink(tempFile);
       } catch {
-        // ignore
       }
 
       const start = Date.now();
       let heartbeat: NodeJS.Timeout | null = null;
 
-      // ✅ Set a timeout so downloads can't hang forever
-      const DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+      const DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
       try {
         logToFile(
@@ -173,15 +166,13 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
           `[SFTP] (${index}/${bakFiles.length}) Downloading (temp): ${remoteFile} -> ${tempFile}`
         );
 
-        // ✅ Heartbeat logs while downloading
         heartbeat = setInterval(async () => {
           const localSoFar = await safeStatSize(tempFile);
           const elapsed = Date.now() - start;
 
-          // Only spam logs if something is happening OR every 10 seconds
           logToFile(
             "database-downloader",
-            `[SFTP] (${index}/${bakFiles.length}) ⏳ In progress: ${safeName} | local=${formatBytes(
+            `[SFTP] (${index}/${bakFiles.length}) In progress: ${safeName} | local=${formatBytes(
               localSoFar
             )} (${remoteSize > 0 ? ((localSoFar / remoteSize) * 100).toFixed(1) : "?"}%) | elapsed=${formatMs(
               elapsed
@@ -189,7 +180,6 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
           );
         }, 2000);
 
-        // ✅ Race download with timeout
         await Promise.race([
           client.get(remoteFile, tempFile),
           new Promise((_, reject) =>
@@ -211,7 +201,6 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
           throw new Error(`Download completed but temp file is 0 bytes: ${tempFile}`);
         }
 
-        // Rename into place
         await fs.rename(tempFile, localFile);
 
         const elapsed = Date.now() - start;
@@ -220,7 +209,7 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
 
         logToFile(
           "database-downloader",
-          `[SFTP] (${index}/${bakFiles.length}) ✅ Downloaded: ${safeName} | bytes=${formatBytes(
+          `[SFTP] (${index}/${bakFiles.length}) Downloaded: ${safeName} | bytes=${formatBytes(
             finalSize
           )} | time=${formatMs(elapsed)} | rate=${formatRate(finalSize, elapsed)}`
         );
@@ -235,18 +224,16 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
 
         logToFile(
           "database-downloader",
-          `[SFTP] (${index}/${bakFiles.length}) ❌ Failed: ${remoteFile} | time=${formatMs(
+          `[SFTP] (${index}/${bakFiles.length}) Failed: ${remoteFile} | time=${formatMs(
             elapsed
           )} | downloadedSoFar=${formatBytes(sizeSoFar)} | error=${msg}`
         );
 
-        // leave temp file for investigation if it has data; otherwise clean it up
         try {
           if (sizeSoFar === 0) {
             await fs.unlink(tempFile);
           }
         } catch {
-          // ignore
         }
       }
 
