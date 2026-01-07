@@ -12,8 +12,6 @@
         "generate-docs": "npx jsdoc dist/**/*.js --destination docs -v",
         "start": "tsc && electron .",
         "build": "rimraf out && rimraf dist && tsc && electron-builder",
-        "build:main": "tsc -p tsconfig.json",
-        "dist": "npm run build:main && electron-builder --publish always",
         "postinstall": "electron-builder install-app-deps",
         "tsc": "tsc",
         "test": "jest"
@@ -42,9 +40,6 @@
         },
         "win": {
             "target": "nsis",
-            "publish": [
-                "github"
-            ],
             "icon": "src/assets/images/company-icon.ico",
             "artifactName": "Dolphin.Enquiries.Setup.${version}.${ext}",
             "requestedExecutionLevel": "asInvoker"
@@ -55,8 +50,7 @@
         "publish": {
             "provider": "github",
             "owner": "EFR-Group",
-            "repo": "Dolphin-Enquiries",
-            "releaseType": "release"
+            "repo": "Dolphin-Enquiries"
         }
     },
     "devDependencies": {
