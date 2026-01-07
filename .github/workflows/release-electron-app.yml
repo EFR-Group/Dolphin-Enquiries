@@ -12,7 +12,7 @@ jobs:
   release:
     runs-on: windows-latest
     env:
-      GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
     steps:
       - uses: actions/checkout@v3
@@ -24,6 +24,16 @@ jobs:
           node-version: 22
 
       - run: npm ci
+
+      - name: Debug GH_TOKEN availability
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.GH_TOKEN }}")) {
+            Write-Error "GH_TOKEN secret is NOT available to this workflow run."
+            exit 1
+          } else {
+            Write-Host "GH_TOKEN secret IS available to this workflow run."
+          }
 
       - name: Get version from package.json
         id: get_version
@@ -44,7 +54,7 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}.git"
+          git remote set-url origin "https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git"
 
       - name: Create tag (if missing)
         shell: pwsh
@@ -83,7 +93,7 @@ jobs:
               --repo $env:GITHUB_REPOSITORY
           }
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Upload release assets
         shell: pwsh
@@ -95,4 +105,4 @@ jobs:
             --clobber `
             --repo $env:GITHUB_REPOSITORY
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
