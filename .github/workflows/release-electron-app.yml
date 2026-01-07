@@ -25,16 +25,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Debug GH_TOKEN availability
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace("${{ secrets.GH_TOKEN }}")) {
-            Write-Error "GH_TOKEN secret is NOT available to this workflow run."
-            exit 1
-          } else {
-            Write-Host "GH_TOKEN secret IS available to this workflow run."
-          }
-
       - name: Get version from package.json
         id: get_version
         shell: pwsh

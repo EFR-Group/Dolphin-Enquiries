@@ -33,6 +33,15 @@ function formatRate(bytes: number, ms: number): string {
   return `${formatBytes(bytesPerSec)}/s`;
 }
 
+async function safeStatSize(filePath: string): Promise<number> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.size;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Downloads all .bak files from SFTP Three's database download directory.
  * @returns A promise resolving to an array of paths to the downloaded .bak files.
@@ -65,6 +74,20 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
       "database-downloader",
       `[SFTP] Starting .bak download | Remote: ${REMOTE_DIR} | Local: ${LOCAL_DIR}`
     );
+
+    // ✅ local write test (catches permissions / Defender Controlled Folder Access)
+    try {
+      const testFile = path.join(LOCAL_DIR, ".write-test.tmp");
+      await fs.writeFile(testFile, "ok");
+      await fs.unlink(testFile);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logToFile(
+        "database-downloader",
+        `[SFTP] ❌ Local write test failed in ${LOCAL_DIR}: ${msg}`
+      );
+      throw err;
+    }
 
     await client.connect();
     logToFile("database-downloader", `[SFTP] Connected`);
@@ -102,6 +125,7 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
         `[SFTP] (${index}/${bakFiles.length}) ${safeName} | size=${formatBytes(remoteSize)}`
       );
 
+      // skip if already downloaded
       try {
         const stat = await fs.stat(localFile);
         if (stat.size === remoteSize && stat.size > 0) {
@@ -124,58 +148,113 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
           )} remote=${formatBytes(remoteSize)} -> re-downloading`
         );
       } catch {
+        // ignore
+      }
+
+      // ✅ Download to temp file first
+      const tempFile = `${localFile}.downloading`;
+
+      // Clean up any old temp file from previous run
+      try {
+        await fs.unlink(tempFile);
+      } catch {
+        // ignore
       }
 
       const start = Date.now();
+      let heartbeat: NodeJS.Timeout | null = null;
+
+      // ✅ Set a timeout so downloads can't hang forever
+      const DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+
       try {
         logToFile(
           "database-downloader",
-          `[SFTP] (${index}/${bakFiles.length}) Downloading: ${remoteFile} -> ${localFile}`
+          `[SFTP] (${index}/${bakFiles.length}) Downloading (temp): ${remoteFile} -> ${tempFile}`
         );
 
-        await client.get(remoteFile, localFile);
+        // ✅ Heartbeat logs while downloading
+        heartbeat = setInterval(async () => {
+          const localSoFar = await safeStatSize(tempFile);
+          const elapsed = Date.now() - start;
 
-        let localSize = 0;
-        try {
-          const stat = await fs.stat(localFile);
-          localSize = stat.size;
-        } catch {
+          // Only spam logs if something is happening OR every 10 seconds
           logToFile(
             "database-downloader",
-            `[SFTP] (${index}/${bakFiles.length}) Warning: download completed but local stat failed: ${localFile}`
+            `[SFTP] (${index}/${bakFiles.length}) ⏳ In progress: ${safeName} | local=${formatBytes(
+              localSoFar
+            )} (${remoteSize > 0 ? ((localSoFar / remoteSize) * 100).toFixed(1) : "?"}%) | elapsed=${formatMs(
+              elapsed
+            )}`
           );
+        }, 2000);
+
+        // ✅ Race download with timeout
+        await Promise.race([
+          client.get(remoteFile, tempFile),
+          new Promise((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(`Download timed out after ${formatMs(DOWNLOAD_TIMEOUT_MS)}`)
+                ),
+              DOWNLOAD_TIMEOUT_MS
+            )
+          ),
+        ]);
+
+        if (heartbeat) clearInterval(heartbeat);
+
+        const finalSize = await safeStatSize(tempFile);
+
+        if (finalSize <= 0) {
+          throw new Error(`Download completed but temp file is 0 bytes: ${tempFile}`);
         }
+
+        // Rename into place
+        await fs.rename(tempFile, localFile);
 
         const elapsed = Date.now() - start;
         downloaded.push(localFile);
-
-        downloadedBytes += localSize || remoteSize;
+        downloadedBytes += finalSize;
 
         logToFile(
           "database-downloader",
           `[SFTP] (${index}/${bakFiles.length}) ✅ Downloaded: ${safeName} | bytes=${formatBytes(
-            localSize || remoteSize
-          )} | time=${formatMs(elapsed)} | rate=${formatRate(localSize || remoteSize, elapsed)}`
+            finalSize
+          )} | time=${formatMs(elapsed)} | rate=${formatRate(finalSize, elapsed)}`
         );
       } catch (err) {
+        if (heartbeat) clearInterval(heartbeat);
+
         failedCount++;
         const msg = err instanceof Error ? err.message : String(err);
-
         const elapsed = Date.now() - start;
+
+        const sizeSoFar = await safeStatSize(tempFile);
+
         logToFile(
           "database-downloader",
-          `[SFTP] (${index}/${bakFiles.length}) Failed: ${remoteFile} | time=${formatMs(
+          `[SFTP] (${index}/${bakFiles.length}) ❌ Failed: ${remoteFile} | time=${formatMs(
             elapsed
-          )} | error=${msg}`
+          )} | downloadedSoFar=${formatBytes(sizeSoFar)} | error=${msg}`
         );
+
+        // leave temp file for investigation if it has data; otherwise clean it up
+        try {
+          if (sizeSoFar === 0) {
+            await fs.unlink(tempFile);
+          }
+        } catch {
+          // ignore
+        }
       }
 
       if (index % 5 === 0 || index === bakFiles.length) {
-        const done = index;
         const overallElapsed = Date.now() - overallStart;
         logToFile(
           "database-downloader",
-          `[SFTP] Progress: ${done}/${bakFiles.length} processed | downloaded=${downloaded.length} (${formatBytes(
+          `[SFTP] Progress: ${index}/${bakFiles.length} processed | downloaded=${downloaded.length} (${formatBytes(
             downloadedBytes
           )}) | skipped=${skippedCount} (${formatBytes(skippedBytes)}) | failed=${failedCount} | elapsed=${formatMs(
             overallElapsed
@@ -185,7 +264,6 @@ export async function downloadBakFilesFromSftpThree(): Promise<string[]> {
     }
 
     const overallElapsed = Date.now() - overallStart;
-
     logToFile(
       "database-downloader",
       `[SFTP] Finished | downloaded=${downloaded.length} (${formatBytes(
