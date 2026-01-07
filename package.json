@@ -22,13 +22,11 @@
         "appId": "com.efr.dolphinenquiries",
         "productName": "Dolphin Enquiries",
         "asar": true,
-        "build": {
-            "files": [
-                "dist/**/*",
-                "node_modules/**/*",
-                "package.json"
-            ]
-        },
+        "files": [
+            "dist/**/*",
+            "node_modules/**/*",
+            "package.json"
+        ],
         "extraResources": [
             {
                 "from": "src/assets",
