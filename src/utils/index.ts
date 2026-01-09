@@ -4,6 +4,7 @@ import { app } from "electron";
 import { format, parseISO } from "date-fns";
 import zlib from 'zlib';
 import { promisify } from 'util';
+import { spawn } from "child_process";
 
 export * from "./settings";
 export * from "./transfer-files";
@@ -447,4 +448,80 @@ export function isWithinPastNDays(folderName: string, days: number): boolean {
   cutoff.setDate(today.getDate() - days);
 
   return folderDate >= cutoff && folderDate <= today;
+}
+
+/**
+ * Kills a process tree (the process and all its child processes) by the given process ID.
+ * This function is for Windows only and uses the `taskkill` command with the `/PID`, `/T`, and `/F` options.
+ * If the command fails, it will be silently ignored.
+ * @param {number} pid - The process ID to kill.
+ */
+export function killProcessTree(pid: number) {
+  try {
+    spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+  } catch { }
+}
+
+/**
+ * Formats a given number of bytes into a human-readable string.
+ * @param {number} bytes - The number of bytes to format.
+ * @returns {string} A string representation of the given number of bytes, using the appropriate unit (B, KB, MB, GB, TB).
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let value = bytes;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+}
+
+/**
+ * Formats a given number of milliseconds into a human-readable string.
+ * If the input is less than 1000ms, the output will be in milliseconds.
+ * If the input is between 1000ms and 1 minute, the output will be in seconds with two decimal places.
+ * If the input is 1 minute or longer, the output will be in minutes and seconds with one decimal place.
+ * @param {number} ms - The number of milliseconds to format.
+ * @returns {string} A string representation of the given number of milliseconds.
+ */
+export function formatMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0ms";
+  if (ms < 1000) return `${ms.toFixed(0)}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(2)}s`;
+  const m = Math.floor(s / 60);
+  const remS = s % 60;
+  return `${m}m ${remS.toFixed(1)}s`;
+}
+
+/**
+ * Formats a given number of bytes and milliseconds into a human-readable string
+ * representing a rate, such as "KB/s" or "MB/s".
+ * If the input milliseconds is less than or equal to 0, the output will be "n/a".
+ * @param {number} bytes - The number of bytes to format into a rate.
+ * @param {number} ms - The number of milliseconds to format into a rate.
+ * @returns {string} A string representation of the given number of bytes and milliseconds, in the form of "X/s" where X is the formatted number of bytes and s is the unit of seconds.
+ */
+export function formatRate(bytes: number, ms: number): string {
+  if (ms <= 0) return "n/a";
+  const bytesPerSec = bytes / (ms / 1000);
+  return `${formatBytes(bytesPerSec)}/s`;
+}
+
+/**
+ * Safely retrieves the size of a file at the given path, returning 0 if the
+ * operation fails.
+ * @param {string} filePath - The path of the file to retrieve the size of.
+ * @returns {Promise<number>} A promise that resolves with the size of the file in bytes, or 0 if the operation fails.
+ */
+export async function safeStatSize(filePath: string): Promise<number> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.size;
+  } catch {
+    return 0;
+  }
 }

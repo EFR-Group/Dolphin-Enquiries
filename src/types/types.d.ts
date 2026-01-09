@@ -267,3 +267,8 @@ type CronitorModule = {
     /** Creates a new Cronitor monitor instance */
     Monitor: new (name: string) => CronitorMonitor;
 };
+
+type RunPowershellOptions = {
+  cwd?: string;
+  timeoutMs?: number;
+};
