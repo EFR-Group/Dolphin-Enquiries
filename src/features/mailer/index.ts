@@ -45,7 +45,7 @@ export async function sendEmail(to: string | undefined, subject: string, text?: 
 
   // Send the email
   const info = await transporter.sendMail({
-    from: `"Dolphin Enquiries" <${config.user}>`, // Sender address
+    from: `"Dolphin Enquiries" <no-reply@efrtravel.com>`, // Sender address
     to: to ?? config.to, // Recipient address
     subject, // Subject line
     text, // Plain text content (optional)
