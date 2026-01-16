@@ -21,6 +21,7 @@ export function setupTray(onQuit: () => void): void {
     { label: "Dolphin Enquiries", enabled: false },
     { type: "separator" },
     { label: "Check Dolphin Files Now", click: () => checkDolphinFiles().catch(console.error) },
+    { label: "Check Dolphin Files All Time", click: () => checkDolphinFiles(Number.MAX_SAFE_INTEGER).catch(console.error) },
     { label: "Download Dolphin Database", click: () => downloadBakFilesFromSftpThree().catch(console.error) },
     { type: "separator" },
     { label: "Settings", click: () => createSettingsWindow() },

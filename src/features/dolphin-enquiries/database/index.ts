@@ -1,15 +1,20 @@
 import * as fs from "fs";
 import * as path from "path";
 import { decode } from "he";
-import { XMLParser } from 'fast-xml-parser';
-import { documentsFolder, getSourceTypeFromFileName, initDbConnection, query } from '../../../utils';
+import { XMLParser } from "fast-xml-parser";
+import {
+  documentsFolder,
+  getSourceTypeFromFileName,
+  initDbConnection,
+  query,
+} from "../../../utils";
 
 /**
  * Logs the processing status of a travel folder.
- * 
+ *
  * This function logs the status of a travel folder (SUCCESS, FAILED, or SKIPPED) along with the time taken
  * for the process and any error messages (if applicable).
- * 
+ *
  * @param {string} fileName - The name of the travel folder file being processed.
  * @param {"SUCCESS" | "FAILED" | "SKIPPED"} status - The status of the processing (SUCCESS, FAILED, or SKIPPED).
  * @param {number} timeTaken - The time taken to process the file in milliseconds.
@@ -21,8 +26,16 @@ function logTravelFolderProcessing(
   timeTaken: number,
   errorMessage?: string
 ): void {
-  const logDir = path.join(documentsFolder(), "DolphinEnquiries", "logs", "snowflake");
-  const logFile = path.join(logDir, `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.txt`);
+  const logDir = path.join(
+    documentsFolder(),
+    "DolphinEnquiries",
+    "logs",
+    "snowflake"
+  );
+  const logFile = path.join(
+    logDir,
+    `${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.txt`
+  );
 
   if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir, { recursive: true });
@@ -31,7 +44,7 @@ function logTravelFolderProcessing(
   let logEntry = `${new Date().toLocaleTimeString()} - ${fileName} - ${status} - ${timeTaken}ms`;
 
   if (errorMessage && status === "FAILED") {
-    const sanitizedError = errorMessage.replace(/\s+/g, ' ').substring(0, 500);
+    const sanitizedError = errorMessage.replace(/\s+/g, " ").substring(0, 500);
     logEntry += ` - ERROR: ${sanitizedError}`;
   }
 
@@ -44,23 +57,32 @@ function logTravelFolderProcessing(
   });
 }
 
+// Helper: normalise Snowflake BOOLEAN storage for your driver (0/1 is safe in many JS drivers)
+const toBool = (v: any) => (v ? 1 : 0);
+
 /**
  * Parses the provided XML string, extracts relevant data, and saves it into a database.
- * 
- * This function processes the XML string representing a travel folder, extracts the necessary details, 
+ *
+ * This function processes the XML string representing a travel folder, extracts the necessary details,
  * and saves the data into the database. If the data is new, it inserts it into the corresponding tables;
  * otherwise, it updates the existing records.
- * 
+ *
  * @param {string} xmlString - The XML string representing the travel folder data.
  * @param {string} fileName - The name of the file being processed (used for logging and source type determination).
- * @returns {Promise<boolean>} - Returns a promise that resolves to `true` if the enquiry is new and successfully saved, 
+ * @returns {Promise<boolean>} - Returns a promise that resolves to `true` if the enquiry is new and successfully saved,
  *                                `false` if it was skipped or the process failed.
  */
-export async function saveParsedTravelFolder(xmlString: string, fileName: string): Promise<boolean> {
+export async function saveParsedTravelFolder(
+  xmlString: string,
+  fileName: string
+): Promise<boolean> {
   const startTime = Date.now();
 
   try {
-    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: "",
+    });
     const json = parser.parse(xmlString);
     const travelFolder = json.DTM_TravelFolder.TravelFolder;
     const sourceType = getSourceTypeFromFileName(fileName);
@@ -79,30 +101,30 @@ export async function saveParsedTravelFolder(xmlString: string, fileName: string
 
     const comments = travelFolder.ReservationCommentItems?.ReservationCommentItem;
     let tripDetailsRawText = Array.isArray(comments)
-      ? comments.map(c => c.Text).join(" | ")
+      ? comments.map((c: any) => c.Text).join(" | ")
       : comments?.Text || "";
 
-    const parts = tripDetailsRawText.split('|').map((p: string) => p.trim());
+    const parts = tripDetailsRawText.split("|").map((p: string) => p.trim());
 
     const kvMap: Record<string, string> = {};
     for (const part of parts) {
       if (!part) continue;
 
-      const colonIndex = part.indexOf(':');
-      let key = '';
-      let value = '';
+      const colonIndex = part.indexOf(":");
+      let key = "";
+      let value = "";
 
       if (colonIndex !== -1) {
         key = part.slice(0, colonIndex).trim().toLowerCase();
         value = part.slice(colonIndex + 1).trim();
       } else {
-        const spaceIndex = part.indexOf(' ');
+        const spaceIndex = part.indexOf(" ");
         if (spaceIndex !== -1) {
           key = part.slice(0, spaceIndex).trim().toLowerCase();
           value = part.slice(spaceIndex + 1).trim();
         } else {
           key = part.trim().toLowerCase();
-          value = '';
+          value = "";
         }
       }
 
@@ -110,24 +132,28 @@ export async function saveParsedTravelFolder(xmlString: string, fileName: string
     }
 
     const tripDetails: TripDetails = {
-      hotel: kvMap['hotel'] || '',
-      nights: kvMap['nights'] ? parseInt(kvMap['nights']) || null : null,
-      golfers: kvMap['golfers'] ? parseInt(kvMap['golfers']) || null : null,
-      non_golfers: kvMap['non golfers'] ? parseInt(kvMap['non golfers']) || null : null,
-      rounds: kvMap['rounds'] ? parseInt(kvMap['rounds']) || null : null,
-      adults: kvMap['adults'] ? parseInt(kvMap['adults']) || null : null,
-      children: kvMap['children'] ? parseInt(kvMap['children']) || null : null,
-      holiday_plans: kvMap['holiday plans'] || null,
-      airport: kvMap['airport'] || null,
+      hotel: kvMap["hotel"] || "",
+      nights: kvMap["nights"] ? parseInt(kvMap["nights"]) || null : null,
+      golfers: kvMap["golfers"] ? parseInt(kvMap["golfers"]) || null : null,
+      non_golfers: kvMap["non golfers"]
+        ? parseInt(kvMap["non golfers"]) || null
+        : null,
+      rounds: kvMap["rounds"] ? parseInt(kvMap["rounds"]) || null : null,
+      adults: kvMap["adults"] ? parseInt(kvMap["adults"]) || null : null,
+      children: kvMap["children"] ? parseInt(kvMap["children"]) || null : null,
+      holiday_plans: kvMap["holiday plans"] || null,
+      airport: kvMap["airport"] || null,
       budget_from: null,
       budget_to: null,
     };
 
-    enquiry.destination_name = kvMap['destination'] ?? null;
+    enquiry.destination_name = (kvMap["destination"] as any) ?? null;
 
-    const budgetMatch = tripDetailsRawText.match(/Budget\s*:\s*£?([\d,]+)pp\s*-\s*£?([\d,]+)pp/i);
+    const budgetMatch = tripDetailsRawText.match(
+      /Budget\s*:\s*£?([\d,]+)pp\s*-\s*£?([\d,]+)pp/i
+    );
     if (budgetMatch) {
-      const toFloat = (val: string) => parseFloat(val.replace(/,/g, '')) || null;
+      const toFloat = (val: string) => parseFloat(val.replace(/,/g, "")) || null;
       tripDetails.budget_from = toFloat(budgetMatch[1]);
       tripDetails.budget_to = toFloat(budgetMatch[2]);
     }
@@ -144,13 +170,16 @@ export async function saveParsedTravelFolder(xmlString: string, fileName: string
     };
 
     const rawPassengers = travelFolder.PassengerListItems?.PassengerListItem;
-    const passengers: Passenger[] = (Array.isArray(rawPassengers)
-      ? rawPassengers
-      : rawPassengers ? [rawPassengers] : [])
-      .map((p: any) => ({
-        given_name: p.PersonName?.GivenName || null,
-        surname: p.PersonName?.Surname || null,
-      }));
+    const passengers: Passenger[] = (
+      Array.isArray(rawPassengers)
+        ? rawPassengers
+        : rawPassengers
+        ? [rawPassengers]
+        : []
+    ).map((p: any) => ({
+      given_name: p.PersonName?.GivenName || null,
+      surname: p.PersonName?.Surname || null,
+    }));
 
     const marketing: Marketing = {
       campaign_code: travelFolder.MarketingCampaignCode ?? null,
@@ -164,42 +193,246 @@ export async function saveParsedTravelFolder(xmlString: string, fileName: string
     let enquiryId: number;
     let isNewEnquiry = false;
 
-    const existing = await query(conn, `SELECT ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ? LIMIT 1`, [enquiry.source_booking_id]);
+    const existing = await query(
+      conn,
+      `SELECT ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ? LIMIT 1`,
+      [enquiry.source_booking_id]
+    );
+
     if (existing && existing.length > 0) {
       enquiryId = existing[0].ID;
-      console.debug(`Enquiry with SOURCE_BOOKING_ID ${enquiry.source_booking_id} already exists, continuing to ensure all child data is inserted.`);
+      console.debug(
+        `Enquiry with SOURCE_BOOKING_ID ${enquiry.source_booking_id} already exists, continuing to ensure all child data is inserted.`
+      );
     } else {
-      console.debug(`Inserting new enquiry with SOURCE_BOOKING_ID ${enquiry.source_booking_id}`);
-      await query(conn, `
-    INSERT INTO ENQUIRIES (SOURCE_BOOKING_ID, DEPARTURE_DATE, CREATE_DATE, STATUS, IS_QUOTE_ONLY, DESTINATION_NAME, DESTINATION_COUNTRY, AIRPORT, SOURCE_TYPE)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-        enquiry.source_booking_id,
-        enquiry.departure_date,
-        enquiry.create_date,
-        enquiry.STATUS,
-        enquiry.is_quote_only,
-        enquiry.destination_name,
-        enquiry.destination_country,
-        enquiry.airport,
-        enquiry.source_type,
-      ]);
+      console.debug(
+        `Inserting new enquiry with SOURCE_BOOKING_ID ${enquiry.source_booking_id}`
+      );
 
-      const insertedEnquiry = await query(conn, `SELECT ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ?`, [enquiry.source_booking_id]);
+      await query(
+        conn,
+        `
+        INSERT INTO ENQUIRIES
+          (SOURCE_BOOKING_ID, DEPARTURE_DATE, CREATE_DATE, STATUS, IS_QUOTE_ONLY, DESTINATION_NAME, DESTINATION_COUNTRY, AIRPORT, SOURCE_TYPE)
+        VALUES
+          (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          enquiry.source_booking_id,
+          enquiry.departure_date,
+          enquiry.create_date,
+          enquiry.STATUS,
+          toBool(enquiry.is_quote_only),
+          enquiry.destination_name,
+          enquiry.destination_country,
+          enquiry.airport,
+          enquiry.source_type,
+        ]
+      );
+
+      const insertedEnquiry = await query(
+        conn,
+        `SELECT ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ?`,
+        [enquiry.source_booking_id]
+      );
       enquiryId = insertedEnquiry[0].ID;
       isNewEnquiry = true;
     }
 
-    // Continue the database inserts/updates for trip details, customer data, passengers, and marketing info...
+    // -------------------------
+    // INSERT / UPDATE CHILD ROWS
+    // -------------------------
+
+    // TRIP_DETAILS: one-per-enquiry (upsert behaviour)
+    const existingTrip = await query(
+      conn,
+      `SELECT ID FROM TRIP_DETAILS WHERE ENQUIRY_ID = ? LIMIT 1`,
+      [enquiryId]
+    );
+
+    if (existingTrip && existingTrip.length > 0) {
+      await query(
+        conn,
+        `
+        UPDATE TRIP_DETAILS
+        SET HOTEL = ?, NIGHTS = ?, GOLFERS = ?, NON_GOLFERS = ?, ROUNDS = ?, ADULTS = ?, CHILDREN = ?, HOLIDAY_PLANS = ?, BUDGET_FROM = ?, BUDGET_TO = ?
+        WHERE ENQUIRY_ID = ?
+        `,
+        [
+          tripDetails.hotel,
+          tripDetails.nights,
+          tripDetails.golfers,
+          tripDetails.non_golfers,
+          tripDetails.rounds,
+          tripDetails.adults,
+          tripDetails.children,
+          tripDetails.holiday_plans,
+          tripDetails.budget_from,
+          tripDetails.budget_to,
+          enquiryId,
+        ]
+      );
+    } else {
+      await query(
+        conn,
+        `
+        INSERT INTO TRIP_DETAILS
+          (ENQUIRY_ID, HOTEL, NIGHTS, GOLFERS, NON_GOLFERS, ROUNDS, ADULTS, CHILDREN, HOLIDAY_PLANS, BUDGET_FROM, BUDGET_TO)
+        VALUES
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          enquiryId,
+          tripDetails.hotel,
+          tripDetails.nights,
+          tripDetails.golfers,
+          tripDetails.non_golfers,
+          tripDetails.rounds,
+          tripDetails.adults,
+          tripDetails.children,
+          tripDetails.holiday_plans,
+          tripDetails.budget_from,
+          tripDetails.budget_to,
+        ]
+      );
+    }
+
+    // CUSTOMERS: one-per-enquiry (upsert behaviour)
+    const existingCustomer = await query(
+      conn,
+      `SELECT ID FROM CUSTOMERS WHERE ENQUIRY_ID = ? LIMIT 1`,
+      [enquiryId]
+    );
+
+    if (existingCustomer && existingCustomer.length > 0) {
+      await query(
+        conn,
+        `
+        UPDATE CUSTOMERS
+        SET GIVEN_NAME = ?, SURNAME = ?, EMAIL = ?, PHONE_NUMBER = ?, NEWSLETTER_OPT_IN = ?
+        WHERE ENQUIRY_ID = ?
+        `,
+        [
+          customerData.given_name,
+          customerData.surname,
+          customerData.email,
+          customerData.phone_number,
+          toBool(customerData.newsletter_opt_in),
+          enquiryId,
+        ]
+      );
+    } else {
+      await query(
+        conn,
+        `
+        INSERT INTO CUSTOMERS
+          (ENQUIRY_ID, GIVEN_NAME, SURNAME, EMAIL, PHONE_NUMBER, NEWSLETTER_OPT_IN)
+        VALUES
+          (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          enquiryId,
+          customerData.given_name,
+          customerData.surname,
+          customerData.email,
+          customerData.phone_number,
+          toBool(customerData.newsletter_opt_in),
+        ]
+      );
+    }
+
+    // MARKETING: one-per-enquiry (upsert behaviour)
+    const existingMarketing = await query(
+      conn,
+      `SELECT ID FROM MARKETING WHERE ENQUIRY_ID = ? LIMIT 1`,
+      [enquiryId]
+    );
+
+    if (existingMarketing && existingMarketing.length > 0) {
+      await query(
+        conn,
+        `
+        UPDATE MARKETING
+        SET CAMPAIGN_CODE = ?, SOURCE = ?, MEDIUM = ?, AD_ID = ?
+        WHERE ENQUIRY_ID = ?
+        `,
+        [
+          marketing.campaign_code,
+          marketing.source,
+          marketing.medium,
+          marketing.ad_id,
+          enquiryId,
+        ]
+      );
+    } else {
+      await query(
+        conn,
+        `
+        INSERT INTO MARKETING
+          (ENQUIRY_ID, CAMPAIGN_CODE, SOURCE, MEDIUM, AD_ID)
+        VALUES
+          (?, ?, ?, ?, ?)
+        `,
+        [
+          enquiryId,
+          marketing.campaign_code,
+          marketing.source,
+          marketing.medium,
+          marketing.ad_id,
+        ]
+      );
+    }
+
+    // PASSENGERS: many-per-enquiry
+    // Strategy: insert only missing passengers (avoid duplicates). We match on given+surname (case-insensitive).
+    // If you prefer "replace all", see alternative block at the bottom.
+    const existingPassengers = await query(
+      conn,
+      `SELECT GIVEN_NAME, SURNAME FROM PASSENGERS WHERE ENQUIRY_ID = ?`,
+      [enquiryId]
+    );
+
+    const existingKey = new Set(
+      (existingPassengers || []).map(
+        (p: any) =>
+          `${(p.GIVEN_NAME || "").toLowerCase()}|${(p.SURNAME || "").toLowerCase()}`
+      )
+    );
+
+    for (const p of passengers) {
+      const key = `${(p.given_name || "").toLowerCase()}|${(
+        p.surname || ""
+      ).toLowerCase()}`;
+      if (existingKey.has(key)) continue;
+
+      await query(
+        conn,
+        `
+        INSERT INTO PASSENGERS (ENQUIRY_ID, GIVEN_NAME, SURNAME)
+        VALUES (?, ?, ?)
+        `,
+        [enquiryId, p.given_name, p.surname]
+      );
+    }
+
+    // ---- Alternative passengers approach: "replace all"
+    // await query(conn, `DELETE FROM PASSENGERS WHERE ENQUIRY_ID = ?`, [enquiryId]);
+    // for (const p of passengers) {
+    //   await query(
+    //     conn,
+    //     `INSERT INTO PASSENGERS (ENQUIRY_ID, GIVEN_NAME, SURNAME) VALUES (?, ?, ?)`,
+    //     [enquiryId, p.given_name, p.surname]
+    //   );
+    // }
 
     const timeTaken = Date.now() - startTime;
     logTravelFolderProcessing(fileName, isNewEnquiry ? "SUCCESS" : "SKIPPED", timeTaken);
     return isNewEnquiry ? true : false;
-
   } catch (e) {
     const timeTaken = Date.now() - startTime;
     const errorMessage = e instanceof Error ? e.message : String(e);
     logTravelFolderProcessing(fileName, "FAILED", timeTaken, errorMessage);
-    console.error('Failed to save parsed travel folder:', e);
+    console.error("Failed to save parsed travel folder:", e);
     return false;
   }
 }
