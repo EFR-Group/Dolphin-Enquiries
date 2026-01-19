@@ -30,7 +30,7 @@ function logTravelFolderProcessing(
     documentsFolder(),
     "DolphinEnquiries",
     "logs",
-    "snowflake"
+    "mssql"
   );
   const logFile = path.join(
     logDir,
@@ -57,7 +57,7 @@ function logTravelFolderProcessing(
   });
 }
 
-// Helper: normalise Snowflake BOOLEAN storage for your driver (0/1 is safe in many JS drivers)
+// Helper: normalise boolean storage for MSSQL BIT columns
 const toBool = (v: any) => (v ? 1 : 0);
 
 /**
@@ -174,8 +174,8 @@ export async function saveParsedTravelFolder(
       Array.isArray(rawPassengers)
         ? rawPassengers
         : rawPassengers
-        ? [rawPassengers]
-        : []
+          ? [rawPassengers]
+          : []
     ).map((p: any) => ({
       given_name: p.PersonName?.GivenName || null,
       surname: p.PersonName?.Surname || null,
@@ -195,7 +195,7 @@ export async function saveParsedTravelFolder(
 
     const existing = await query(
       conn,
-      `SELECT ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ? LIMIT 1`,
+      `SELECT TOP 1 ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ?`,
       [enquiry.source_booking_id]
     );
 
@@ -209,14 +209,15 @@ export async function saveParsedTravelFolder(
         `Inserting new enquiry with SOURCE_BOOKING_ID ${enquiry.source_booking_id}`
       );
 
-      await query(
+      const inserted = await query(
         conn,
         `
-        INSERT INTO ENQUIRIES
-          (SOURCE_BOOKING_ID, DEPARTURE_DATE, CREATE_DATE, STATUS, IS_QUOTE_ONLY, DESTINATION_NAME, DESTINATION_COUNTRY, AIRPORT, SOURCE_TYPE)
-        VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
+  INSERT INTO ENQUIRIES
+    (SOURCE_BOOKING_ID, DEPARTURE_DATE, CREATE_DATE, [STATUS], IS_QUOTE_ONLY, DESTINATION_NAME, DESTINATION_COUNTRY, AIRPORT, SOURCE_TYPE)
+  OUTPUT INSERTED.ID AS ID
+  VALUES
+    (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
         [
           enquiry.source_booking_id,
           enquiry.departure_date,
@@ -230,12 +231,11 @@ export async function saveParsedTravelFolder(
         ]
       );
 
-      const insertedEnquiry = await query(
-        conn,
-        `SELECT ID FROM ENQUIRIES WHERE SOURCE_BOOKING_ID = ?`,
-        [enquiry.source_booking_id]
-      );
-      enquiryId = insertedEnquiry[0].ID;
+      if (!inserted?.length || inserted[0]?.ID == null) {
+        throw new Error("Insert into ENQUIRIES did not return an inserted ID");
+      }
+      
+      enquiryId = inserted[0].ID;
       isNewEnquiry = true;
     }
 
@@ -246,7 +246,7 @@ export async function saveParsedTravelFolder(
     // TRIP_DETAILS: one-per-enquiry (upsert behaviour)
     const existingTrip = await query(
       conn,
-      `SELECT ID FROM TRIP_DETAILS WHERE ENQUIRY_ID = ? LIMIT 1`,
+      `SELECT TOP 1 ID FROM TRIP_DETAILS WHERE ENQUIRY_ID = ?`,
       [enquiryId]
     );
 
@@ -300,7 +300,7 @@ export async function saveParsedTravelFolder(
     // CUSTOMERS: one-per-enquiry (upsert behaviour)
     const existingCustomer = await query(
       conn,
-      `SELECT ID FROM CUSTOMERS WHERE ENQUIRY_ID = ? LIMIT 1`,
+      `SELECT TOP 1 ID FROM CUSTOMERS WHERE ENQUIRY_ID = ?`,
       [enquiryId]
     );
 
@@ -344,7 +344,7 @@ export async function saveParsedTravelFolder(
     // MARKETING: one-per-enquiry (upsert behaviour)
     const existingMarketing = await query(
       conn,
-      `SELECT ID FROM MARKETING WHERE ENQUIRY_ID = ? LIMIT 1`,
+      `SELECT TOP 1 ID FROM MARKETING WHERE ENQUIRY_ID = ?`,
       [enquiryId]
     );
 
