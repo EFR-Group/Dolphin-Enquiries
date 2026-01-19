@@ -9,6 +9,8 @@ import {
   query,
 } from "../../../utils";
 
+let tablesEnsured = false;
+
 /**
  * Logs the processing status of a travel folder.
  *
@@ -189,6 +191,7 @@ export async function saveParsedTravelFolder(
     };
 
     const conn = await initDbConnection();
+    await ensureTablesExistOnce(conn);
 
     let enquiryId: number;
     let isNewEnquiry = false;
@@ -234,7 +237,7 @@ export async function saveParsedTravelFolder(
       if (!inserted?.length || inserted[0]?.ID == null) {
         throw new Error("Insert into ENQUIRIES did not return an inserted ID");
       }
-      
+
       enquiryId = inserted[0].ID;
       isNewEnquiry = true;
     }
@@ -415,16 +418,6 @@ export async function saveParsedTravelFolder(
       );
     }
 
-    // ---- Alternative passengers approach: "replace all"
-    // await query(conn, `DELETE FROM PASSENGERS WHERE ENQUIRY_ID = ?`, [enquiryId]);
-    // for (const p of passengers) {
-    //   await query(
-    //     conn,
-    //     `INSERT INTO PASSENGERS (ENQUIRY_ID, GIVEN_NAME, SURNAME) VALUES (?, ?, ?)`,
-    //     [enquiryId, p.given_name, p.surname]
-    //   );
-    // }
-
     const timeTaken = Date.now() - startTime;
     logTravelFolderProcessing(fileName, isNewEnquiry ? "SUCCESS" : "SKIPPED", timeTaken);
     return isNewEnquiry ? true : false;
@@ -436,3 +429,109 @@ export async function saveParsedTravelFolder(
     return false;
   }
 }
+
+export async function ensureTablesExistOnce(conn: any) {
+  if (tablesEnsured) return;
+  await ensureTablesExist(conn);
+  tablesEnsured = true;
+}
+
+export async function ensureTablesExist(conn: any) {
+  await query(conn, `
+    IF OBJECT_ID('dbo.ENQUIRIES', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.ENQUIRIES (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        SOURCE_BOOKING_ID NVARCHAR(100) NOT NULL,
+        DEPARTURE_DATE DATETIME2 NULL,
+        CREATE_DATE DATETIME2 NULL,
+        [STATUS] NVARCHAR(50) NULL,
+        IS_QUOTE_ONLY BIT NOT NULL DEFAULT 0,
+        DESTINATION_NAME NVARCHAR(200) NULL,
+        DESTINATION_COUNTRY NVARCHAR(10) NULL,
+        AIRPORT NVARCHAR(100) NULL,
+        SOURCE_TYPE NVARCHAR(50) NULL
+      );
+
+      CREATE UNIQUE INDEX UX_ENQUIRIES_SOURCE_BOOKING_ID
+      ON dbo.ENQUIRIES (SOURCE_BOOKING_ID);
+    END
+  `);
+
+  await query(conn, `
+    IF OBJECT_ID('dbo.TRIP_DETAILS', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.TRIP_DETAILS (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        ENQUIRY_ID INT NOT NULL,
+        HOTEL NVARCHAR(200) NULL,
+        NIGHTS INT NULL,
+        GOLFERS INT NULL,
+        NON_GOLFERS INT NULL,
+        ROUNDS INT NULL,
+        ADULTS INT NULL,
+        CHILDREN INT NULL,
+        HOLIDAY_PLANS NVARCHAR(MAX) NULL,
+        BUDGET_FROM FLOAT NULL,
+        BUDGET_TO FLOAT NULL,
+        CONSTRAINT FK_TRIP_DETAILS_ENQUIRY
+          FOREIGN KEY (ENQUIRY_ID) REFERENCES dbo.ENQUIRIES(ID)
+          ON DELETE CASCADE
+      );
+    END
+  `);
+
+  await query(conn, `
+    IF OBJECT_ID('dbo.CUSTOMERS', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.CUSTOMERS (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        ENQUIRY_ID INT NOT NULL,
+        GIVEN_NAME NVARCHAR(100) NULL,
+        SURNAME NVARCHAR(100) NULL,
+        EMAIL NVARCHAR(254) NULL,
+        PHONE_NUMBER NVARCHAR(50) NULL,
+        NEWSLETTER_OPT_IN BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CUSTOMERS_ENQUIRY
+          FOREIGN KEY (ENQUIRY_ID) REFERENCES dbo.ENQUIRIES(ID)
+          ON DELETE CASCADE
+      );
+    END
+  `);
+
+  await query(conn, `
+    IF OBJECT_ID('dbo.MARKETING', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.MARKETING (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        ENQUIRY_ID INT NOT NULL,
+        CAMPAIGN_CODE NVARCHAR(100) NULL,
+        SOURCE NVARCHAR(200) NULL,
+        MEDIUM NVARCHAR(200) NULL,
+        AD_ID NVARCHAR(200) NULL,
+        CONSTRAINT FK_MARKETING_ENQUIRY
+          FOREIGN KEY (ENQUIRY_ID) REFERENCES dbo.ENQUIRIES(ID)
+          ON DELETE CASCADE
+      );
+    END
+  `);
+
+  await query(conn, `
+    IF OBJECT_ID('dbo.PASSENGERS', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.PASSENGERS (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        ENQUIRY_ID INT NOT NULL,
+        GIVEN_NAME NVARCHAR(100) NULL,
+        SURNAME NVARCHAR(100) NULL,
+        CONSTRAINT FK_PASSENGERS_ENQUIRY
+          FOREIGN KEY (ENQUIRY_ID) REFERENCES dbo.ENQUIRIES(ID)
+          ON DELETE CASCADE
+      );
+
+      CREATE INDEX IX_PASSENGERS_ENQUIRY_ID
+      ON dbo.PASSENGERS (ENQUIRY_ID);
+    END
+  `);
+}
+
