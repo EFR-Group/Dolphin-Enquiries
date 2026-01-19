@@ -1,113 +1,113 @@
-import snowflake, { FileAndStageBindStatement, RowStatement } from 'snowflake-sdk';
-import { logToFile, settings } from './';
+import sql from "mssql";
+import { logToFile, settings } from "./";
 
-/** Snowflake connection object */
-export let connection: snowflake.Connection | null = null;
-let dolphinConnection: boolean = false;
+export let connection: sql.ConnectionPool | null = null;
+let dolphinConnection = false; // keep if you still need the "DOLPHINDATA" idea
 let config: any = null;
 
-/**
- * Initializes a Snowflake database connection.
- * 
- * This function checks if the connection already exists and is appropriate for the requested `isDolphinData` flag. 
- * If no valid connection exists, it establishes a new connection using the provided Snowflake configuration.
- * 
- * @param {boolean} isDolphinData - Flag to indicate whether the connection is for Dolphin data or not. Default is false.
- * @returns {Promise<snowflake.Connection | null>} - A promise that resolves to the Snowflake connection or null.
- * @throws {Error} - If the Snowflake configuration is missing.
- */
-export async function initDbConnection(isDolphinData: boolean = false): Promise<snowflake.Connection | null> {
-  // Check if the existing connection matches the requested flag (isDolphinData)
-  if (connection && dolphinConnection == isDolphinData) return connection;
-
-  config = await settings.getSnowflakeConfig();
-
-  // Set the dolphinConnection flag based on the function parameter
-  if (isDolphinData) {
-    dolphinConnection = true;
-  } else {
-    dolphinConnection = false;
-  }
-
-  // Throw an error if the configuration is missing
-  if (!config) throw new Error('Snowflake config is missing');
-
-  // Create a new Snowflake connection with the provided configuration
-  const conn = snowflake.createConnection({
-    account: config.account,
-    username: config.username,
-    password: config.password,
-    authenticator: 'PROGRAMMATIC_ACCESS_TOKEN',
-    warehouse: config.warehouse,
-    database: !isDolphinData ? config.database : 'DOLPHINDATA',
-    schema: config.schema,
-    role: config.role,
-  });
-
-  // Establish the connection and resolve it
-  connection = await new Promise<snowflake.Connection>((resolve, reject) => {
-    conn.connect((err, connectedConn) => {
-      if (err) {
-        logToFile("snowflake", `Failed to connect to Snowflake: ${err.message || err}`);
-        reject(err);
-      } else {
-        logToFile("snowflake", `Connected to Snowflake: ${config.account}`);
-        resolve(connectedConn);
-      }
-    });
-  });
-
-  return connection;
+function withDbOverride(base: any, isDolphinData: boolean) {
+  // In Snowflake you had a hard override to DOLPHINDATA.
+  // In MSSQL, you can do the same by overriding the database name if you want.
+  if (!isDolphinData) return base;
+  return { ...base, database: "DOLPHINDATA" };
 }
 
 /**
- * Executes a SQL query on the provided Snowflake connection.
- * 
- * This function executes the provided SQL statement with optional parameter bindings.
- * If the connection is terminated, it will attempt to reconnect and retry the query.
- * 
- * @param {snowflake.Connection | null} conn - The Snowflake connection object to execute the query on.
- * @param {string} sql - The SQL query string to execute.
- * @param {any[]} [binds=[]] - An optional array of bind variables for the SQL query.
- * @param {boolean} [retry=true] - Flag indicating whether to retry the query in case of a terminated connection. Default is true.
- * @returns {Promise<any[]>} - A promise that resolves with the query result as an array of rows.
- * @throws {Error} - If the query fails after retrying.
+ * Initializes an MSSQL connection pool.
+ * Keeps the same signature you had for Snowflake.
  */
-export async function query(conn: snowflake.Connection | null, sql: string, binds: any[] = [], retry = true): Promise<any[]> {
-  // If no connection is provided, return an empty array
+export async function initDbConnection(
+  isDolphinData: boolean = false
+): Promise<sql.ConnectionPool | null> {
+  if (connection?.connected && dolphinConnection === isDolphinData) return connection;
+
+  config = await settings.getMsSQLConfig();
+
+  dolphinConnection = isDolphinData;
+
+  if (!config) throw new Error("MSSQL config is missing");
+
+  const poolConfig: sql.config = {
+    server: config.server,
+    database: config.database,
+    user: config.user,
+    password: config.password,
+    port: config.port ?? 1433,
+    options: {
+      encrypt: Boolean(config.options?.encrypt),
+      trustServerCertificate: Boolean(config.options?.trustServerCertificate),
+    },
+    pool: {
+      max: 10,
+      min: 0,
+      idleTimeoutMillis: 30000,
+    },
+  };
+
+  const finalConfig = withDbOverride(poolConfig, isDolphinData);
+
+  try {
+    connection = await new sql.ConnectionPool(finalConfig).connect();
+    logToFile("mssql", `Connected to MSSQL: ${finalConfig.server}/${finalConfig.database}`);
+    return connection;
+  } catch (err: any) {
+    logToFile("mssql", `Failed to connect to MSSQL: ${err?.message || err}`);
+    connection = null;
+    throw err;
+  }
+}
+
+/**
+ * Executes a SQL query on MSSQL.
+ * Supports your existing `?` binds by converting them to @p1, @p2...
+ */
+export async function query(
+  conn: sql.ConnectionPool | null,
+  sqlText: string,
+  binds: any[] = [],
+  retry = true
+): Promise<any[]> {
   if (!conn) return [];
 
-  return new Promise((resolve, reject) => {
-    // Execute the SQL query
-    conn.execute({
-      sqlText: sql,
-      binds,
-      complete: async (err, stmt, rows) => {
-        if (err) {
-          const isTerminated = /terminated connection/i.test(err.message);
-          if (isTerminated) {
-            logToFile("snowflake", 'Snowflake connection was terminated. Retrying...');
-            connection = null;
+  // Convert `?` placeholders to @p1, @p2, ...
+  let idx = 0;
+  const convertedSql = sqlText.replace(/\?/g, () => `@p${++idx}`);
 
-            if (retry) {
-              try {
-                // Reconnect and retry the query
-                const newConn = await initDbConnection();
-                const result = await query(newConn, sql, binds, false);
-                return resolve(result);
-              } catch (retryErr) {
-                logToFile("snowflake", `Error reconnecting to Snowflake: ${typeof retryErr === 'object' && retryErr !== null && 'message' in retryErr ? (retryErr as { message?: string }).message : retryErr}`);
-                return reject(retryErr);
-              }
-            }
-          }
-          logToFile("snowflake", `Error executing query: ${err.message || err}`);
-          return reject(err);
-        } else {
-          logToFile("snowflake", `Query executed successfully: ${sql}`);
-          resolve(rows || []);
-        }
-      },
+  try {
+    const req = conn.request();
+    binds.forEach((val, i) => {
+      req.input(`p${i + 1}`, val);
     });
-  });
+
+    const result = await req.query(convertedSql);
+    const rows = result.recordset || [];
+
+    if (/OUTPUT\s+INSERTED\./i.test(convertedSql) && rows.length === 0) {
+      throw new Error("Query used OUTPUT INSERTED but returned no rows (check identity column / OUTPUT clause).");
+    }
+
+    logToFile("mssql", `Query executed successfully: ${convertedSql}`);
+
+    return rows;
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    logToFile("mssql", `Error executing query: ${msg}`);
+
+    // Basic retry on common connection-ish issues
+    const looksLikeConnIssue =
+      /ConnectionError|closed|socket|ECONNRESET|ETIMEOUT|ELOGIN/i.test(msg);
+
+    if (retry && looksLikeConnIssue) {
+      logToFile("mssql", "MSSQL connection issue detected. Reconnecting and retrying...");
+      try {
+        connection?.close?.();
+      } catch { }
+      connection = null;
+
+      const newConn = await initDbConnection(dolphinConnection);
+      return query(newConn, sqlText, binds, false);
+    }
+
+    throw err;
+  }
 }
