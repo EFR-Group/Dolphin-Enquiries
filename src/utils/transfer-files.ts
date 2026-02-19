@@ -1,6 +1,7 @@
 import SFTPClient from 'ssh2-sftp-client';
 import { Client as FTPClient } from 'basic-ftp';
 import { delay, logToFile } from '.';
+import fs from "fs/promises";
 
 /**
  * Unified file information structure for both FTP and SFTP.
@@ -60,8 +61,9 @@ export class TransferClient {
      * @param {SFTPClient | FTPClient} client - The client to check.
      * @returns {boolean} - True if the client is an instance of SFTPClient.
      */
-    private isSFTPClient(client: SFTPClient | FTPClient): boolean {
-        return (client as SFTPClient).list !== undefined;
+    private isSFTPClient(client: SFTPClient | FTPClient): client is SFTPClient {
+        return typeof (client as SFTPClient).fastGet === "function"
+            && typeof (client as SFTPClient).put === "function";
     }
 
     /**
@@ -70,8 +72,8 @@ export class TransferClient {
      * @param {SFTPClient | FTPClient} client - The client to check.
      * @returns {boolean} - True if the client is an instance of FTPClient.
      */
-    private isFTPClient(client: SFTPClient | FTPClient): boolean {
-        return (client as FTPClient).access !== undefined;
+    private isFTPClient(client: SFTPClient | FTPClient): client is FTPClient {
+        return typeof (client as FTPClient).downloadTo === "function";
     }
 
     /**
@@ -119,13 +121,16 @@ export class TransferClient {
      * @returns {Promise<T>} - The result of the function execution.
      * @throws {Error} - If the function fails after maxRetries attempts.
      */
-    private async withRetries<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
+    private async withRetries<T>(
+        fn: (attempt: number) => Promise<T>,
+        options: RetryOptions
+    ): Promise<T> {
         const { label, maxRetries = 3, retryDelayMs = 2000 } = options;
         const target = this.toString();
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                return await fn();
+                return await fn(attempt);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 this.log(`${label} attempt ${attempt} failed (${target}): ${msg}`);
@@ -202,14 +207,11 @@ export class TransferClient {
      */
     async connect(maxRetries: number = 3, retryDelayMs: number = 2000): Promise<void> {
         const client = this.isSFTP
-            ? await this.withRetries(() => this.createSFTPClient(), { label: 'SFTP connect', maxRetries, retryDelayMs })
-            : await this.withRetries(() => this.createFTPClient(), { label: 'FTP connect', maxRetries, retryDelayMs });
+            ? await this.withRetries((_attempt) => this.createSFTPClient(), { label: 'SFTP connect', maxRetries, retryDelayMs })
+            : await this.withRetries((_attempt) => this.createFTPClient(), { label: 'FTP connect', maxRetries, retryDelayMs });
 
-        if (this.isSFTP) {
-            this.sftpClient = client as SFTPClient;
-        } else {
-            this.ftpClient = client as FTPClient;
-        }
+        if (this.isSFTP) this.sftpClient = client as SFTPClient;
+        else this.ftpClient = client as FTPClient;
 
         this.log(`Connected to ${this.toString()}`);
     }
@@ -226,7 +228,7 @@ export class TransferClient {
         const client = this.getClient();
 
         if (this.isSFTPClient(client)) {
-            return this.withRetries(async () => {
+            return this.withRetries(async (_attempt) => {
                 const sftpList = await client.list(remotePath);
                 return sftpList.map(item => ({
                     name: item.name,
@@ -235,12 +237,11 @@ export class TransferClient {
                 }));
             }, { label: `SFTP list(${remotePath})` });
         } else if (this.isFTPClient(client)) {
-            await this.ftpClient?.cd(remotePath);
             return this.withRetries(async () => {
-                const ftpList = await this.ftpClient?.list() || [];
+                const ftpList = await client.list(remotePath);
                 return ftpList.map(item => ({
                     name: item.name,
-                    type: item.isDirectory ? 'directory' : 'file',
+                    type: item.isDirectory ? "directory" : "file",
                     size: item.size,
                 }));
             }, { label: `FTP list(${remotePath})` });
@@ -255,30 +256,45 @@ export class TransferClient {
         const client = this.getClient();
 
         if (this.isSFTPClient(client)) {
-            const sftp = client as SFTPClient;
-
-            const concurrency = 16;
+            const concurrency = 8;
             const chunkSize = 1024 * 1024;
 
-            try {
-                await sftp.fastGet(remoteFile, localFile, {
-                    concurrency,
-                    chunkSize,
-                });
+            await this.withRetries(async (attempt) => {
+                let size = 0;
+                try { size = (await fs.stat(localFile)).size; } catch { }
 
+                if (attempt === 1 && size > 0) {
+                    this.log(`Removing existing partial file before download: ${localFile} (${size} bytes)`);
+                    await fs.unlink(localFile);
+                }
+
+                if (attempt > 1) {
+                    let retrySize = 0;
+                    try { retrySize = (await fs.stat(localFile)).size; } catch { }
+                    if (retrySize > 0) {
+                        this.log(`Retry #${attempt - 1}: removing partial download ${localFile} (${retrySize} bytes)`);
+                        await fs.unlink(localFile);
+                    } else {
+                        this.log(`Retry #${attempt - 1}: starting fresh (no partial file found)`);
+                    }
+                }
+
+                await client.fastGet(remoteFile, localFile, { concurrency, chunkSize });
                 this.log(`fastGet completed (${concurrency}x${chunkSize}) for ${remoteFile}`);
-                return;
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this.log(`fastGet failed, falling back to get(): ${msg}`);
+            }, { label: `SFTP get(${remoteFile})`, maxRetries: 3, retryDelayMs: 2000 });
 
-                await sftp.get(remoteFile, localFile);
-                return;
-            }
+            return;
         }
 
         if (this.isFTPClient(client)) {
-            await this.ftpClient?.downloadTo(localFile, remoteFile);
+            await this.withRetries(
+                async (_attempt) => {
+                    await client.downloadTo(localFile, remoteFile);
+                },
+                { label: `FTP get(${remoteFile})`, maxRetries: 3, retryDelayMs: 2000 }
+            );
+
+            return;
         }
     }
 
@@ -286,19 +302,20 @@ export class TransferClient {
         this.log(`Uploading file from ${localFile} to ${remoteFile}`);
         const client = this.getClient();
         if (this.isSFTPClient(client)) {
-            await (client as SFTPClient).put(localFile, remoteFile);
+            await client.put(localFile, remoteFile);
         } else if (this.isFTPClient(client)) {
-            await this.ftpClient?.uploadFrom(localFile, remoteFile);
+            await client.uploadFrom(localFile, remoteFile);
         }
     }
 
     async delete(remoteFile: string): Promise<void> {
         this.log(`Deleting file: ${remoteFile}`);
         const client = this.getClient();
+
         if (this.isSFTPClient(client)) {
-            await (client as SFTPClient).delete(remoteFile);
+            await client.delete(remoteFile);
         } else if (this.isFTPClient(client)) {
-            await this.ftpClient?.remove(remoteFile);
+            await client.remove(remoteFile);
         }
     }
 
@@ -310,15 +327,16 @@ export class TransferClient {
     async end(): Promise<void> {
         try {
             const client = this.getClient();
+
             if (this.isSFTPClient(client)) {
-                await this.sftpClient?.end();
-                this.log(`Closed connection to ${this.toString()}`);
+                await client.end();
                 this.sftpClient = null;
             } else if (this.isFTPClient(client)) {
-                await this.ftpClient?.close();
-                this.log(`Closed connection to ${this.toString()}`);
+                await client.close();
                 this.ftpClient = null;
             }
+
+            this.log(`Closed connection to ${this.toString()}`);
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
             this.log(`Error while closing ${this.toString()}: ${errorMsg}`);
