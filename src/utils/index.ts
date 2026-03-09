@@ -10,6 +10,7 @@ export * from "./settings";
 export * from "./transfer-files";
 export * from "./snowflake";
 export * from "./logger";
+export * from "./reporting";
 export * from "./safeRelaunch";
 
 const gzip = promisify(zlib.gzip);
@@ -163,6 +164,7 @@ export async function loadEmailTemplate(
     </table>
 
     <div style="margin-top: 16px;">
+      <p><strong>Total Enquiries:</strong> ${totalLeisure + totalGolf}</p>
       <p><strong>Total Leisure:</strong> ${totalLeisure}</p>
       <p><strong>Total Golf:</strong> ${totalGolf}</p>
     </div>

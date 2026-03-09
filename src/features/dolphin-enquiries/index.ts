@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import { ping, saveParsedTravelFolder, sendEmail } from "..";
 import { getMainWindow, updateTrayTooltip } from "../../window";
-import { assets, determineReportMode, documentsFolder, getWeekDateStrings, isWithinPastNDays, loadEmailTemplate, runWithConcurrencyLimit } from "../../utils";
+import { assets, determineReportMode, documentsFolder, getWeekDateStrings, isWithinPastNDays, loadEmailTemplate, mergePerDateCountsPreferLatestSnapshot, runWithConcurrencyLimit } from "../../utils";
 
 /**
  * Parses the Dolphin Enquiries XML files and processes them.
@@ -110,7 +110,7 @@ export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
 
   if (isFriday) {
     const weekDates = getWeekDateStrings(today);
-    reportCounts = [];
+    const snapshots: Array<{ snapshotKey: string; perDateCounts: Array<{ date: string; leisureCount: number; golfCount: number }> }> = [];
 
     for (const day of weekDates) {
       const file = path.join(weeklyStorePath, `${day}.json`);
@@ -118,17 +118,18 @@ export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
         if (fsSync.existsSync(file)) {
           const content = await fs.readFile(file, "utf-8");
           const parsed = JSON.parse(content);
-          reportCounts.push(...parsed);
+          snapshots.push({ snapshotKey: day, perDateCounts: parsed });
         }
       } catch (err) {
         console.warn("Failed to read cached file for", day, err);
       }
     }
 
-    reportCounts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
     const formatDashedDate = (yyyymmdd: string) =>
       `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+
+    const allowedDates = new Set(weekDates.map(formatDashedDate));
+    reportCounts = mergePerDateCountsPreferLatestSnapshot(snapshots, allowedDates);
 
     subject = `Weekly Dolphin Enquiries Report (${formatDashedDate(weekDates[0])} to ${formatDashedDate(weekDates.at(-1)!)})`;
 
@@ -142,8 +143,6 @@ export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
     }
   }
 
-  updateTrayTooltip("Processed " + reportCounts.length + " day(s)");
-
   getMainWindow()?.loadFile(assets.template('report.html'));
   getMainWindow()?.webContents.once('did-finish-load', () => {
     getMainWindow()?.webContents.send('report-data', { perDateCounts: reportCounts });
@@ -151,6 +150,7 @@ export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
 
   const totalLeisure = reportCounts.reduce((sum, d) => sum + d.leisureCount, 0);
   const totalGolf = reportCounts.reduce((sum, d) => sum + d.golfCount, 0);
+  updateTrayTooltip(`Processed ${totalLeisure + totalGolf} enquiries across ${reportCounts.length} day(s)`);
   const mode = determineReportMode(reportCounts);
   const html = await loadEmailTemplate(reportCounts, totalLeisure, totalGolf, mode);
 
