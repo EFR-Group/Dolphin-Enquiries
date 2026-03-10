@@ -71,8 +71,8 @@ const toBool = (v: any) => (v ? 1 : 0);
  *
  * @param {string} xmlString - The XML string representing the travel folder data.
  * @param {string} fileName - The name of the file being processed (used for logging and source type determination).
- * @returns {Promise<boolean>} - Returns a promise that resolves to `true` if the enquiry is new and successfully saved,
- *                                `false` if it was skipped or the process failed.
+ * @returns {Promise<boolean>} - Returns a promise that resolves to `true` if the enquiry XML was processed successfully,
+ *                                `false` if the process failed.
  */
 export async function saveParsedTravelFolder(
   xmlString: string,
@@ -420,7 +420,7 @@ export async function saveParsedTravelFolder(
 
     const timeTaken = Date.now() - startTime;
     logTravelFolderProcessing(fileName, isNewEnquiry ? "SUCCESS" : "SKIPPED", timeTaken);
-    return isNewEnquiry ? true : false;
+    return true;
   } catch (e) {
     const timeTaken = Date.now() - startTime;
     const errorMessage = e instanceof Error ? e.message : String(e);
