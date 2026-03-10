@@ -359,7 +359,7 @@ export function getWeekDateStrings(today: Date): string[] {
   const lastSunday = new Date(monday);
   lastSunday.setDate(monday.getDate() - 1);
 
-  const formatDate = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  const formatDate = (d: Date) => format(d, "yyyyMMdd");
 
   result.push(formatDate(lastSaturday));
   result.push(formatDate(lastSunday));
