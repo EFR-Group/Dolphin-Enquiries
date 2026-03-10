@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
+import { format } from "date-fns";
 import { ping, saveParsedTravelFolder, sendEmail } from "..";
 import { getMainWindow, updateTrayTooltip } from "../../window";
 import { assets, determineReportMode, documentsFolder, getWeekDateStrings, isWithinPastNDays, loadEmailTemplate, mergePerDateCountsPreferLatestSnapshot, runWithConcurrencyLimit } from "../../utils";
@@ -86,30 +87,34 @@ async function parseFilesAndSendToDatabase(howLong: number): Promise<Array<{ dat
  * @returns {Promise<void>} Resolves when the process is complete and the report is sent.
  */
 export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
-  const today = new Date();
-  const dateKey = today.toISOString().slice(0, 10).replace(/-/g, "");
-  const dateKeyFormatted = today.toISOString().split("T")[0];
-  const isFriday = today.getDay() === 5;
+  const runDate = new Date();
+  const reportDate = new Date(runDate);
+  reportDate.setDate(reportDate.getDate() - 1);
+
+  const dateKey = format(reportDate, "yyyyMMdd");
+  const dateKeyFormatted = format(reportDate, "yyyy-MM-dd");
+  const isFriday = reportDate.getDay() === 5;
   const weeklyStorePath = path.join(documentsFolder(), "DolphinEnquiries", "cache", "weekly");
 
   await fs.mkdir(weeklyStorePath, { recursive: true });
 
-  let todayCounts: Array<{ date: string; leisureCount: number; golfCount: number }> = [];
+  let reportDateCounts: Array<{ date: string; leisureCount: number; golfCount: number }> = [];
 
   try {
-    todayCounts = await parseFilesAndSendToDatabase(howLong);
+    const parsedCounts = await parseFilesAndSendToDatabase(howLong);
+    reportDateCounts = parsedCounts.filter(({ date }) => date === dateKeyFormatted);
     const cacheFile = path.join(weeklyStorePath, `${dateKey}.json`);
-    await fs.writeFile(cacheFile, JSON.stringify(todayCounts, null, 2), "utf-8");
+    await fs.writeFile(cacheFile, JSON.stringify(reportDateCounts, null, 2), "utf-8");
   } catch (err) {
     console.error("Error saving daily counts:", err);
-    todayCounts = [];
+    reportDateCounts = [];
   }
 
-  let reportCounts = todayCounts;
+  let reportCounts = reportDateCounts;
   let subject = `Dolphin Enquiries Report for ${dateKeyFormatted}`;
 
   if (isFriday) {
-    const weekDates = getWeekDateStrings(today);
+    const weekDates = getWeekDateStrings(reportDate);
     const snapshots: Array<{ snapshotKey: string; perDateCounts: Array<{ date: string; leisureCount: number; golfCount: number }> }> = [];
 
     for (const day of weekDates) {
