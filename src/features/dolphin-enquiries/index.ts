@@ -60,9 +60,15 @@ async function parseFilesAndSendToDatabase(howLong: number): Promise<Array<{ dat
     });
 
     for (const { file, saved } of resultsPerFile) {
-      if (saved) {
-        if (file.toLowerCase().startsWith("lwc")) leisureCount++;
-        else if (file.toLowerCase().startsWith("egr")) golfCount++;
+      const lowerFile = file.toLowerCase();
+      if (lowerFile.startsWith("lwc")) leisureCount++;
+      else if (lowerFile.startsWith("egr")) golfCount++;
+
+      if (!saved) {
+        ping('EFR-Electron-DolphinEnquiries', {
+          state: 'warn',
+          message: `Counted ${file} for reporting, but database ingestion failed.`,
+        });
       }
     }
 
