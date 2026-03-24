@@ -160,6 +160,32 @@ export async function saveParsedTravelFolder(
       tripDetails.budget_to = toFloat(budgetMatch[2]);
     }
 
+    if (tripDetails.budget_from == null || tripDetails.budget_to == null) {
+      const fallbackBudgetMatch = tripDetailsRawText.match(
+        /Budget\s*:\s*(?:Â£|£)?\s*([\d,]+)(?:\s*pp)?\s*-\s*(?:Â£|£)?\s*([\d,]+)(?:\s*pp)?/i
+      );
+      if (fallbackBudgetMatch) {
+        const toFloat = (val: string) => parseFloat(val.replace(/,/g, "")) || null;
+        tripDetails.budget_from = toFloat(fallbackBudgetMatch[1]);
+        tripDetails.budget_to = toFloat(fallbackBudgetMatch[2]);
+      }
+    }
+
+    if (tripDetails.budget_from == null && tripDetails.budget_to == null) {
+      const singleSidedBudgetMatch = tripDetailsRawText.match(
+        /Budget\s*:\s*(Under|Over)\s*(?:Â£|£)?\s*([\d,]+)(?:\s*pp)?/i
+      );
+      if (singleSidedBudgetMatch) {
+        const toFloat = (val: string) => parseFloat(val.replace(/,/g, "")) || null;
+        const amount = toFloat(singleSidedBudgetMatch[2]);
+        if (/under/i.test(singleSidedBudgetMatch[1])) {
+          tripDetails.budget_to = amount;
+        } else {
+          tripDetails.budget_from = amount;
+        }
+      }
+    }
+
     enquiry.airport = tripDetails.airport;
 
     const customer = travelFolder.CustomerForBooking?.DirectCustomer?.Customer;
