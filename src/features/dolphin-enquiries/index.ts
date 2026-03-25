@@ -95,7 +95,6 @@ async function parseFilesAndSendToDatabase(howLong: number): Promise<Array<{ dat
 export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
   const runDate = new Date();
   const reportDate = new Date(runDate);
-  reportDate.setDate(reportDate.getDate() - 1);
 
   const dateKey = format(reportDate, "yyyyMMdd");
   const dateKeyFormatted = format(reportDate, "yyyy-MM-dd");
