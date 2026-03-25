@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { documentsFolder, isRegularFile, logToFile, settings, TransferClient } from '../../utils';
-import { ping } from '..';
+import { ping, saveParsedTravelFolder } from '..';
 
 let isTransferring: boolean = false;
 const failureStorePath: string = path.join(documentsFolder(), "DolphinEnquiries", "cache", "file-transfer-failures.json");
@@ -199,6 +199,20 @@ export async function watchAndTransferFiles(): Promise<void> {
     let currentFile: string | null = null;
 
     try {
+        async function ingestLocalFile(localFile: string, fileName: string): Promise<boolean> {
+            try {
+                const xmlContent = await fs.promises.readFile(localFile, 'utf-8');
+                const saved = await saveParsedTravelFolder(xmlContent, fileName);
+                if (!saved) {
+                    logToFile("file-movements", `Database ingestion failed for ${fileName}`);
+                }
+                return saved;
+            } catch (err) {
+                logToFile("file-movements", `Database ingestion error for ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+                return false;
+            }
+        }
+
         async function transferFilesFromClient(client: TransferClient, sourceRemotePath: string) {
             const fileList = await client.list(sourceRemotePath);
             logToFile("file-movements", `Found ${fileList.length} files/folders in ${sourceRemotePath} from ${client.toString()}`);
@@ -219,6 +233,15 @@ export async function watchAndTransferFiles(): Promise<void> {
                     await client.get(remoteFile, localFile);
                     if (fs.existsSync(localFile)) {
                         logToFile("file-movements", `Downloaded ${fileName} from ${sourceRemotePath}`);
+
+                        const savedToDatabase = await ingestLocalFile(localFile, fileName);
+                        if (!savedToDatabase) {
+                            ping('EFR-Electron-Mover', {
+                                state: 'fail',
+                                message: `Database ingestion failed for ${fileName}`,
+                            });
+                            continue;
+                        }
 
                         await client.delete(remoteFile);
                         logToFile("file-movements", `Deleted source file ${fileName} from ${sourceRemotePath}`);

@@ -68,7 +68,7 @@ app.whenReady().then(async () => {
 
   // Set up the scheduler to run tasks at specified intervals
   setupScheduler(
-    { task: checkDolphinFiles, schedule: '0 * * * *' },  // runs at the top of every hour
+    { task: checkDolphinFiles, schedule: '0 1 * * *' },  // runs at 1:00 AM
     {
       task: () => downloadBakFilesFromSftpThree().catch(console.error),
       schedule: "30 1 * * *", // runs at 1:30 AM

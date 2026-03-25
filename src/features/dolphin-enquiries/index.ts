@@ -2,23 +2,22 @@ import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
 import { format } from "date-fns";
-import { ping, saveParsedTravelFolder, sendEmail } from "..";
+import { ping, sendEmail } from "..";
 import { getMainWindow, updateTrayTooltip } from "../../window";
 import { assets, determineReportMode, documentsFolder, getWeekDateStrings, isWithinPastNDays, loadEmailTemplate, mergePerDateCountsPreferLatestSnapshot, runWithConcurrencyLimit } from "../../utils";
 
 /**
- * Parses the Dolphin Enquiries XML files and processes them.
+ * Scans the Dolphin Enquiries XML files and counts them for reporting.
  * 
- * This function reads all files in the specified folder, processes them in parallel (using concurrency), 
- * and saves the parsed travel data to the database. It tracks the number of leisure and golf records 
- * processed per file, and returns these counts per date.
+ * This function reads all files in the specified folder and counts leisure and golf files
+ * per date for reporting. Database ingestion is handled during file transfer.
  * 
  * @param {number} howLong - The number of past days to consider when processing files.
  * @returns {Promise<Array<{ date: string, leisureCount: number, golfCount: number }>>} 
  *  A promise that resolves to an array of objects containing the date and counts of leisure and golf records.
  */
-async function parseFilesAndSendToDatabase(howLong: number): Promise<Array<{ date: string, leisureCount: number, golfCount: number }>> {
-  updateTrayTooltip("Parsing Dolphin Enquiries files...");
+async function scanFilesForReportCounts(howLong: number): Promise<Array<{ date: string, leisureCount: number, golfCount: number }>> {
+  updateTrayTooltip("Scanning Dolphin Enquiries files...");
 
   ping('EFR-Electron-DolphinEnquiries', { state: 'run' });
 
@@ -41,35 +40,12 @@ async function parseFilesAndSendToDatabase(howLong: number): Promise<Array<{ dat
     let leisureCount = 0;
     let golfCount = 0;
 
-    const resultsPerFile = await runWithConcurrencyLimit(files, 4, async (file) => {
-      try {
-        const fullPath = path.join(folderPath, file);
-        const xmlContent = await fs.readFile(fullPath, "utf-8");
-        const saved = await saveParsedTravelFolder(xmlContent, file);
-        return { file, saved };
-      } catch (error) {
-        console.error(`Failed to process file ${file}`, error);
+    const resultsPerFile = await runWithConcurrencyLimit(files, 4, async (file) => ({ file }));
 
-        const message =
-          error instanceof Error ? error.message : String(error);
-
-        ping('EFR-Electron-DolphinEnquiries', { state: 'warn', message: `Failed to process file ${file}: ${message}` });
-
-        return { file, saved: false };
-      }
-    });
-
-    for (const { file, saved } of resultsPerFile) {
+    for (const { file } of resultsPerFile) {
       const lowerFile = file.toLowerCase();
       if (lowerFile.startsWith("lwc")) leisureCount++;
       else if (lowerFile.startsWith("egr")) golfCount++;
-
-      if (!saved) {
-        ping('EFR-Electron-DolphinEnquiries', {
-          state: 'warn',
-          message: `Counted ${file} for reporting, but database ingestion failed.`,
-        });
-      }
     }
 
     if (leisureCount + golfCount > 0) {
@@ -95,6 +71,7 @@ async function parseFilesAndSendToDatabase(howLong: number): Promise<Array<{ dat
 export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
   const runDate = new Date();
   const reportDate = new Date(runDate);
+  reportDate.setDate(reportDate.getDate() - 1);
 
   const dateKey = format(reportDate, "yyyyMMdd");
   const dateKeyFormatted = format(reportDate, "yyyy-MM-dd");
@@ -106,7 +83,7 @@ export async function checkDolphinFiles(howLong: number = 10): Promise<void> {
   let reportDateCounts: Array<{ date: string; leisureCount: number; golfCount: number }> = [];
 
   try {
-    const parsedCounts = await parseFilesAndSendToDatabase(howLong);
+    const parsedCounts = await scanFilesForReportCounts(howLong);
     reportDateCounts = parsedCounts.filter(({ date }) => date === dateKeyFormatted);
     const cacheFile = path.join(weeklyStorePath, `${dateKey}.json`);
     await fs.writeFile(cacheFile, JSON.stringify(reportDateCounts, null, 2), "utf-8");
