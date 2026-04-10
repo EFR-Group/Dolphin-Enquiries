@@ -118,6 +118,11 @@
           <input type="number" id="sftp1Port" name="sftp1Port" required
             class="w-full px-3 py-2 border rounded-md dark:bg-gray-800 dark:border-gray-700" />
         </div>
+        <div class="flex items-center">
+          <input type="checkbox" id="sftp1UseSFTP" name="sftp1UseSFTP" checked
+            class="h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-700" />
+          <label for="sftp1UseSFTP" class="ml-2 text-sm">Use SFTP</label>
+        </div>
         <div>
           <label for="sftp1User" class="block text-sm font-medium mb-1">Username</label>
           <input type="text" id="sftp1User" name="sftp1User" required
@@ -154,6 +159,11 @@
           <input type="number" id="sftp2Port" name="sftp2Port" required
             class="w-full px-3 py-2 border rounded-md dark:bg-gray-800 dark:border-gray-700" />
         </div>
+        <div class="flex items-center">
+          <input type="checkbox" id="sftp2UseSFTP" name="sftp2UseSFTP" checked
+            class="h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-700" />
+          <label for="sftp2UseSFTP" class="ml-2 text-sm">Use SFTP</label>
+        </div>
         <div>
           <label for="sftp2User" class="block text-sm font-medium mb-1">Username</label>
           <input type="text" id="sftp2User" name="sftp2User" required
@@ -189,6 +199,11 @@
           <label for="sftp3Port" class="block text-sm font-medium mb-1">Port</label>
           <input type="number" id="sftp3Port" name="sftp3Port" required
             class="w-full px-3 py-2 border rounded-md dark:bg-gray-800 dark:border-gray-700" />
+        </div>
+        <div class="flex items-center">
+          <input type="checkbox" id="sftp3UseSFTP" name="sftp3UseSFTP" checked
+            class="h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-700" />
+          <label for="sftp3UseSFTP" class="ml-2 text-sm">Use SFTP</label>
         </div>
         <div>
           <label for="sftp3User" class="block text-sm font-medium mb-1">Username</label>
@@ -355,6 +370,7 @@
       if (sftp1Config) {
         document.getElementById('sftp1Host').value = sftp1Config.host;
         document.getElementById('sftp1Port').value = sftp1Config.port;
+        document.getElementById('sftp1UseSFTP').checked = sftp1Config.useSFTP ?? true;
         document.getElementById('sftp1User').value = sftp1Config.username;
         document.getElementById('sftp1Pass').value = sftp1Config.password;
         document.getElementById('sftp1RemotePath').value = sftp1Config.remotePath;
@@ -364,6 +380,7 @@
       if (sftp2Config) {
         document.getElementById('sftp2Host').value = sftp2Config.host;
         document.getElementById('sftp2Port').value = sftp2Config.port;
+        document.getElementById('sftp2UseSFTP').checked = sftp2Config.useSFTP ?? true;
         document.getElementById('sftp2User').value = sftp2Config.username;
         document.getElementById('sftp2Pass').value = sftp2Config.password;
         document.getElementById('sftp2RemotePath').value = sftp2Config.remotePath;
@@ -373,6 +390,7 @@
       if (sftp3Config) {
         document.getElementById('sftp3Host').value = sftp3Config.host;
         document.getElementById('sftp3Port').value = sftp3Config.port;
+        document.getElementById('sftp3UseSFTP').checked = sftp3Config.useSFTP ?? true;
         document.getElementById('sftp3User').value = sftp3Config.username;
         document.getElementById('sftp3Pass').value = sftp3Config.password;
         document.getElementById('sftp3UploadPath').value = sftp3Config.uploadPath;
@@ -457,6 +475,7 @@
         const config = {
           host: document.getElementById('sftp1Host').value,
           port: parseInt(document.getElementById('sftp1Port').value),
+          useSFTP: document.getElementById('sftp1UseSFTP').checked,
           username: document.getElementById('sftp1User').value,
           password: document.getElementById('sftp1Pass').value,
           remotePath: document.getElementById('sftp1RemotePath').value,
@@ -492,6 +511,7 @@
         const config = {
           host: document.getElementById('sftp2Host').value,
           port: parseInt(document.getElementById('sftp2Port').value),
+          useSFTP: document.getElementById('sftp2UseSFTP').checked,
           username: document.getElementById('sftp2User').value,
           password: document.getElementById('sftp2Pass').value,
           remotePath: document.getElementById('sftp2RemotePath').value,
@@ -527,6 +547,7 @@
         const config = {
           host: document.getElementById('sftp3Host').value,
           port: parseInt(document.getElementById('sftp3Port').value),
+          useSFTP: document.getElementById('sftp3UseSFTP').checked,
           username: document.getElementById('sftp3User').value,
           password: document.getElementById('sftp3Pass').value,
           uploadPath: document.getElementById('sftp3UploadPath').value,

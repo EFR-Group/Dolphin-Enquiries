@@ -31,6 +31,7 @@ class Settings {
           sftpOne: {
             host: '',
             port: 22,
+            useSFTP: true,
             username: '',
             password: '',
             remotePath: '',
@@ -38,6 +39,7 @@ class Settings {
           sftpTwo: {
             host: '',
             port: 22,
+            useSFTP: true,
             username: '',
             password: '',
             uploadPath: '',
@@ -45,6 +47,7 @@ class Settings {
           sftpThree: {
             host: '',
             port: 22,
+            useSFTP: true,
             username: '',
             password: '',
             uploadPath: '',

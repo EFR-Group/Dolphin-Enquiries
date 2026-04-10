@@ -147,12 +147,32 @@ export async function watchAndTransferFiles(): Promise<void> {
     const client2 = new TransferClient(configTwo);
     const client3 = new TransferClient(configThree);
 
-    await client1.connect();
-    await client2.connect();
-    await client3.connect();
+    const originClientStates = [
+        { client: client1, remotePath: configOne.remotePath || "/", connected: false },
+        { client: client2, remotePath: configTwo.remotePath || "/", connected: false },
+    ];
+    let destinationConnected = false;
 
-    const remotePath1 = configOne.remotePath || "/";
-    const remotePath2 = configTwo.remotePath || "/";
+    for (const origin of originClientStates) {
+        try {
+            await origin.client.connect();
+            origin.connected = true;
+        } catch (err) {
+            logToFile(
+                "file-movements",
+                `Failed to connect origin ${origin.client.toString()}: ${err instanceof Error ? err.message : String(err)}`
+            );
+        }
+    }
+
+    try {
+        await client3.connect();
+        destinationConnected = true;
+    } catch (err) {
+        logToFile("file-movements", `Failed to connect destination ${client3.toString()}: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+    }
+
     const uploadPath3 = configThree.uploadPath || "/";
 
     const todayFolderName = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -166,19 +186,18 @@ export async function watchAndTransferFiles(): Promise<void> {
     if (isTransferring) return;
     // Check for downloadable files before proceeding
     async function hasDownloadableFiles(): Promise<boolean> {
-        const paths = [
-            { client: client1, path: remotePath1 },
-            { client: client2, path: remotePath2 }
-        ];
-
-        for (const { client, path: p } of paths) {
+        for (const origin of originClientStates) {
+            if (!origin.connected) continue;
             try {
-                const list = await client.list(p);
+                const list = await origin.client.list(origin.remotePath);
                 if (list.some(f => isRegularFile(f))) {
                     return true;
                 }
             } catch (err) {
-                logToFile("file-movements", `Error checking files in ${p}: ${err instanceof Error ? err.message : String(err)}`);
+                logToFile(
+                    "file-movements",
+                    `Error checking files in ${origin.remotePath} from ${origin.client.toString()}: ${err instanceof Error ? err.message : String(err)}`
+                );
             }
         }
         return false;
@@ -187,9 +206,12 @@ export async function watchAndTransferFiles(): Promise<void> {
     let failureCache = loadFailures();
 
     if (!(await hasDownloadableFiles()) && failureCache.length === 0) {
-        await client1.end();
-        await client2.end();
-        await client3.end();
+        for (const origin of originClientStates) {
+            await origin.client.end();
+        }
+        if (destinationConnected) {
+            await client3.end();
+        }
         return;
     }
     isTransferring = true;
@@ -301,8 +323,22 @@ export async function watchAndTransferFiles(): Promise<void> {
 
         saveFailures(failureCache);
 
-        await transferFilesFromClient(client1, remotePath1);
-        await transferFilesFromClient(client2, remotePath2);
+        for (const origin of originClientStates) {
+            if (!origin.connected) continue;
+            try {
+                await transferFilesFromClient(origin.client, origin.remotePath);
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                logToFile(
+                    "file-movements",
+                    `Transfer error while processing ${origin.client.toString()} (${origin.remotePath}): ${errorMessage}`
+                );
+                ping('EFR-Electron-Mover', {
+                    state: 'fail',
+                    message: `Transfer failed for origin ${origin.client.toString()}: ${errorMessage}`
+                });
+            }
+        }
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -313,9 +349,12 @@ export async function watchAndTransferFiles(): Promise<void> {
             message: `Transfer failed${currentFile ? ` for file \"${currentFile}\"` : ''}: ${errorMessage}`
         });
     } finally {
-        await client1.end();
-        await client2.end();
-        await client3.end();
+        for (const origin of originClientStates) {
+            await origin.client.end();
+        }
+        if (destinationConnected) {
+            await client3.end();
+        }
         isTransferring = false;
 
         logToFile("file-movements", `=== End transfer session ===`);
