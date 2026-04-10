@@ -52,7 +52,10 @@ export class TransferClient {
      * @param {FTPConfig} config - The configuration object for the FTP/SFTP server.
      */
     constructor(private config: FTPConfig) {
-        this.isSFTP = [22, 54872, 42870].includes(config.port);
+        // Prefer explicit transport selection. Fall back to legacy port inference for older saved configs.
+        this.isSFTP = typeof config.useSFTP === 'boolean'
+            ? config.useSFTP
+            : [22, 54872, 42870].includes(config.port);
     }
 
     /**

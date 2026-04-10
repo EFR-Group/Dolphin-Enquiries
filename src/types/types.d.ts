@@ -28,6 +28,8 @@ type FTPConfig = {
     host: string;
     /** The FTP server port */
     port: number;
+    /** Whether to use SFTP instead of FTP */
+    useSFTP?: boolean;
     /** The username for authenticating with the FTP server */
     username: string;
     /** The password for authenticating with the FTP server */
