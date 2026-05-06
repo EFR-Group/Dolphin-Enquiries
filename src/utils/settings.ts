@@ -26,6 +26,7 @@ class Settings {
             secure: true,
             user: '',
             pass: '',
+            from: '"Dolphin Enquiries" <no-reply@mail.efrtravel.com>',
             to: ''
           },
           sftpOne: {
