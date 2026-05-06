@@ -14,6 +14,8 @@ type SMTPConfig = {
     user: string;
     /** The password for authenticating with the SMTP server */
     pass: string;
+    /** The sender address shown in outgoing emails */
+    from: string;
     /** The email address to send the email to */
     to: string;
 }

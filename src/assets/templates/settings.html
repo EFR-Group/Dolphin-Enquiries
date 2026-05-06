@@ -91,6 +91,12 @@
         </div>
 
         <div>
+          <label for="smtpFrom" class="block text-sm font-medium mb-1">From</label>
+          <input type="text" id="smtpFrom" name="smtpFrom" required placeholder='"Dolphin Enquiries" <no-reply@efrtravel.com>'
+            class="w-full px-3 py-2 border rounded-md dark:bg-gray-800 dark:border-gray-700" />
+        </div>
+
+        <div>
           <label for="smtpTo" class="block text-sm font-medium mb-1">Recipient Email
             (comma-separated)</label>
           <input type="text" id="smtpTo" name="smtpTo" required placeholder="example@email.com,exampletwo@email.com"
@@ -363,6 +369,7 @@
         document.getElementById('smtpSecure').checked = smtpConfig.secure;
         document.getElementById('smtpUser').value = smtpConfig.user;
         document.getElementById('smtpPass').value = smtpConfig.pass;
+        document.getElementById('smtpFrom').value = smtpConfig.from || '"Dolphin Enquiries" <no-reply@efrtravel.com>';
         document.getElementById('smtpTo').value = smtpConfig.to;
       }
 
@@ -442,6 +449,7 @@
           secure: document.getElementById('smtpSecure').checked,
           user: document.getElementById('smtpUser').value,
           pass: document.getElementById('smtpPass').value,
+          from: document.getElementById('smtpFrom').value,
           to: document.getElementById('smtpTo').value,
         };
         const result = await window.electronAPI?.saveSMTPConfig?.(config);
