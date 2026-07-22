@@ -1,5 +1,5 @@
 import { Tray, nativeTheme, nativeImage, Menu } from "electron";
-import { checkDolphinFiles, checkForUpdates, downloadBakFilesFromSftpThree } from "../../features";
+import { checkForUpdates, downloadBakFilesFromSftpThree } from "../../features";
 import { assets } from "../../utils";
 import { getMainWindow } from "../main-window";
 import { createSettingsWindow } from "../settings";
@@ -9,7 +9,9 @@ let tray: Tray;
 /**
  * Sets up the system tray for the application, including a context menu with various options.
  * The tray displays an icon and allows users to interact with the app through different actions.
- * 
+ *
+ * Enquiry file processing and count emails run in Azure Functions; this app retains .bak download/restore.
+ *
  * @param {Function} onQuit - A callback function that will be invoked when the "Quit" menu item is selected.
  * The `onQuit` callback should handle the termination of the application.
  */
@@ -18,10 +20,8 @@ export function setupTray(onQuit: () => void): void {
   tray = new Tray(nativeImage.createFromPath(iconPath));
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: "Dolphin Enquiries", enabled: false },
+    { label: "Dolphin Enquiries (bak only)", enabled: false },
     { type: "separator" },
-    { label: "Check Dolphin Files Now", click: () => checkDolphinFiles().catch(console.error) },
-    { label: "Check Dolphin Files All Time", click: () => checkDolphinFiles(999999).catch(console.error) },
     { label: "Download Dolphin Database", click: () => downloadBakFilesFromSftpThree().catch(console.error) },
     { type: "separator" },
     { label: "Settings", click: () => createSettingsWindow() },
@@ -30,7 +30,7 @@ export function setupTray(onQuit: () => void): void {
     { label: "Quit", click: onQuit }
   ]);
 
-  tray.setToolTip("Dolphin Enquiries");
+  tray.setToolTip("Dolphin Enquiries (bak restore)");
   tray.setContextMenu(contextMenu);
 
   tray.on("click", () => {

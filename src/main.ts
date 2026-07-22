@@ -1,5 +1,5 @@
 import { app, Menu, ipcMain } from "electron";
-import { enableAutoLaunch, setupAutoUpdater, setupScheduler, checkDolphinFiles, watchAndTransferFiles, downloadBakFilesFromSftpThree } from "./features";
+import { enableAutoLaunch, setupAutoUpdater, setupScheduler, downloadBakFilesFromSftpThree } from "./features";
 import { createMainWindow, getMainWindow, setIsQuitting, setupSettingsHandlers, setupTray } from "./window";
 import { setupSafeRelaunch } from "./utils";
 
@@ -35,8 +35,8 @@ if (!gotTheLock) {
 /**
  * This function is executed when the app is ready and sets up the various components for the application.
  * It enables auto-launch, sets up auto-updating, creates the main window, and sets up tray functionality.
- * Additionally, it schedules tasks for periodic actions such as checking dolphin files and transferring files.
- * 
+ * Enquiry ingest and count emails run in Azure Functions; this app schedules .bak download/restore only.
+ *
  * @returns {Promise<void>} Resolves when the app is fully initialized and tasks are scheduled.
  */
 app.whenReady().then(async () => {
@@ -66,16 +66,12 @@ app.whenReady().then(async () => {
     app.quit();  // Quit the app
   });
 
-  // Set up the scheduler to run tasks at specified intervals
-  setupScheduler(
-    { task: checkDolphinFiles, schedule: '0 1 * * *' },  // runs at 1:00 AM
-    {
-      task: () => downloadBakFilesFromSftpThree().catch(console.error),
-      schedule: "30 1 * * *", // runs at 1:30 AM
-    },
-    // { task: getAllDataIntoSnowflake, schedule: '0 2 * * *' },  // runs at 2:00 AM (commented out)
-    { task: watchAndTransferFiles, schedule: '*/30 * * * * *' } // runs every 30 seconds
-  );
+  // Enquiry ingest + count emails moved to Azure Functions.
+  // This tray app only downloads/restores .bak from SFTP Three.
+  setupScheduler({
+    task: () => downloadBakFilesFromSftpThree().catch(console.error),
+    schedule: "30 1 * * *", // runs at 1:30 AM
+  });
 });
 
 app.on("before-quit", () => {
